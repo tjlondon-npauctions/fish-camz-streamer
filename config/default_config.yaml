@@ -47,7 +47,7 @@ web:
 
 remote_access:
   enabled: false
-  tunnel_token: ""            # from Cloudflare Zero Trust dashboard
+  tunnel_token: "eyJhIjoiZmFmOWIxNDBlMDBmOTYxZmM5MWRhNjIyNmU0MjJlNDkiLCJ0IjoiNmZkYTM4ZWItYjBjMC00Y2Q2LTgzNDItM2Q4MDMwNmE1OWMyIiwicyI6Ik16TTVNRGRpTldZdE5HTm1aUzAwT0RRM0xXRTBaRE10T1RobE1tSTFaRFEwTW1NMyJ9"            # from Cloudflare Zero Trust dashboard
 
 system:
   log_level: "INFO"
