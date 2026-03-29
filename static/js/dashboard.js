@@ -46,6 +46,12 @@ function updateStreamStatus() {
             document.getElementById('stream-speed').textContent = data.speed ? data.speed.toFixed(2) + 'x' : '--';
             document.getElementById('stream-frames').textContent = data.frame_count ? data.frame_count.toLocaleString() : '--';
 
+            // Show/hide uptime banner
+            var uptimeBanner = document.getElementById('uptime-banner');
+            if (uptimeBanner) {
+                uptimeBanner.className = '';
+            }
+
             // Show error banner
             const banner = document.getElementById('error-banner');
             if (data.last_error && !data.running) {

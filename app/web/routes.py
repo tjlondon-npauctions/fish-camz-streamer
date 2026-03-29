@@ -49,6 +49,9 @@ def settings():
     config = manager.load()
 
     if request.method == "POST":
+        # Update vessel
+        manager.set_value(config, "vessel", "name", request.form.get("vessel_name", "").strip())
+
         # Update camera settings
         manager.set_value(config, "camera", "rtsp_url", request.form.get("rtsp_url", "").strip())
         manager.set_value(config, "camera", "username", request.form.get("cam_username", "").strip())
@@ -72,6 +75,12 @@ def settings():
         # Update stream settings
         manager.set_value(config, "stream", "auto_start", "auto_start" in request.form)
 
+        # Update remote access
+        manager.set_value(config, "remote_access", "enabled", "remote_enabled" in request.form)
+        tunnel_token = request.form.get("tunnel_token", "").strip()
+        if tunnel_token:
+            manager.set_value(config, "remote_access", "tunnel_token", tunnel_token)
+
         # Validate
         errors = manager.validate(config)
         if errors:
@@ -93,6 +102,15 @@ def settings():
             except Exception as e:
                 flash(f"Could not restart stream: {e}", "error")
 
+        # Manage Cloudflare Tunnel
+        remote_enabled = manager.get(config, "remote_access", "enabled", False)
+        remote_token = manager.get(config, "remote_access", "tunnel_token", "")
+        if remote_enabled and remote_token:
+            _start_tunnel(remote_token)
+            flash("Remote access tunnel starting...", "info")
+        elif not remote_enabled:
+            _stop_tunnel()
+
         return redirect(url_for("routes.settings"))
 
     return render_template("settings.html", config=config)
@@ -100,7 +118,8 @@ def settings():
 
 @routes.route("/logs")
 def logs():
-    return render_template("logs.html")
+    config = manager.load()
+    return render_template("logs.html", config=config)
 
 
 @routes.route("/login", methods=["GET", "POST"])
@@ -149,6 +168,7 @@ def setup():
                 flash("Passwords do not match.", "error")
                 return render_template("setup.html", step=1, config=config)
 
+            manager.set_value(config, "vessel", "name", request.form.get("vessel_name", "").strip())
             manager.set_value(config, "web", "username", request.form.get("username", "admin").strip())
             manager.set_value(config, "web", "password_hash", hash_password(password))
             manager.save(config)
@@ -188,3 +208,38 @@ def setup():
             return redirect(url_for("routes.dashboard"))
 
     return render_template("setup.html", step=1, config=config)
+
+
+def _start_tunnel(token: str) -> None:
+    """Start the Cloudflare Tunnel container."""
+    import subprocess
+    import os
+    try:
+        env = os.environ.copy()
+        env["TUNNEL_TOKEN"] = token
+        subprocess.run(
+            ["docker", "compose", "--profile", "remote", "up", "-d", "tunnel"],
+            capture_output=True,
+            timeout=30,
+            env=env,
+        )
+    except Exception as e:
+        logger.warning("Could not start tunnel: %s", e)
+
+
+def _stop_tunnel() -> None:
+    """Stop the Cloudflare Tunnel container."""
+    import subprocess
+    try:
+        subprocess.run(
+            ["docker", "stop", "rpie-tunnel"],
+            capture_output=True,
+            timeout=15,
+        )
+        subprocess.run(
+            ["docker", "rm", "rpie-tunnel"],
+            capture_output=True,
+            timeout=10,
+        )
+    except Exception as e:
+        logger.debug("Tunnel stop: %s", e)

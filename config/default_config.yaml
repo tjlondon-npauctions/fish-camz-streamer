@@ -1,6 +1,9 @@
-# RPie-Streamer Default Configuration
+# Fish Camz Default Configuration
 # This file is copied to data/config.yaml on first run.
 # Edit via the web UI at http://<pi-ip>:8080 or manually.
+
+vessel:
+  name: ""                    # e.g. "FV Pacific Dawn"
 
 camera:
   rtsp_url: ""                # e.g. rtsp://192.168.1.100:554/stream1
@@ -41,6 +44,10 @@ web:
   username: ""                # empty = first-run setup required
   password_hash: ""
   secret_key: ""              # auto-generated on first run
+
+remote_access:
+  enabled: false
+  tunnel_token: ""            # from Cloudflare Zero Trust dashboard
 
 system:
   log_level: "INFO"

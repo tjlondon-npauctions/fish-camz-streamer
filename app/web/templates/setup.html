@@ -3,13 +3,13 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Setup - RPie-Streamer</title>
+    <title>Setup - Fish Camz</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <main class="container" style="max-width: 600px; margin-top: 5vh;">
-        <h2>RPie-Streamer Setup</h2>
+        <h2>Fish Camz Setup</h2>
 
         <!-- Progress -->
         <nav aria-label="Setup progress">
@@ -32,16 +32,23 @@
         {% if step == 1 %}
         <!-- Step 1: Create Password -->
         <article>
-            <header><strong>Create Admin Account</strong></header>
+            <header><strong>Vessel &amp; Admin Setup</strong></header>
             <form method="post">
                 <input type="hidden" name="step" value="1">
 
-                <label for="username">Username</label>
+                <label for="vessel_name">Vessel Name</label>
+                <input type="text" id="vessel_name" name="vessel_name"
+                       value="{{ config.vessel.name or '' }}"
+                       placeholder="e.g. FV Pacific Dawn" autofocus>
+
+                <hr>
+
+                <label for="username">Admin Username</label>
                 <input type="text" id="username" name="username" value="admin" required>
 
                 <label for="password">Password</label>
                 <input type="password" id="password" name="password" required
-                       placeholder="At least 6 characters" minlength="6" autofocus>
+                       placeholder="At least 6 characters" minlength="6">
 
                 <label for="confirm_password">Confirm Password</label>
                 <input type="password" id="confirm_password" name="confirm_password" required>

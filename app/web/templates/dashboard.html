@@ -1,21 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - RPie-Streamer{% endblock %}
+{% block title %}Dashboard - Fish Camz{% endblock %}
 
 {% block content %}
+{% if config.vessel and config.vessel.name %}
+<h2>{{ config.vessel.name }}</h2>
+{% else %}
 <h2>Dashboard</h2>
+{% endif %}
+
+<!-- Stream uptime banner -->
+<article id="uptime-banner" class="hidden" style="text-align:center; padding: 0.75rem;">
+    <span id="status-indicator" class="indicator indicator-offline"></span>
+    <strong id="stream-status">Loading...</strong>
+    &nbsp;&mdash;&nbsp; Streaming for <strong id="stream-uptime">--</strong>
+</article>
 
 <div class="grid">
     <!-- Stream Status -->
     <article id="stream-card">
-        <header>
-            <span id="status-indicator" class="indicator indicator-offline"></span>
-            <strong>Stream Status</strong>
-        </header>
+        <header><strong>Stream</strong></header>
         <dl>
-            <dt>Status</dt>
-            <dd id="stream-status">Loading...</dd>
-            <dt>Uptime</dt>
-            <dd id="stream-uptime">--</dd>
             <dt>Restarts</dt>
             <dd id="stream-restarts">--</dd>
         </dl>

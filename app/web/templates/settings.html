@@ -1,10 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Settings - RPie-Streamer{% endblock %}
+{% block title %}Settings - Fish Camz{% endblock %}
 
 {% block content %}
 <h2>Settings</h2>
 
 <form method="post">
+    <!-- Vessel -->
+    <article>
+        <header><strong>Vessel</strong></header>
+        <label for="vessel_name">Vessel Name</label>
+        <input type="text" id="vessel_name" name="vessel_name"
+               value="{{ config.vessel.name or '' }}"
+               placeholder="e.g. FV Pacific Dawn">
+    </article>
+
     <!-- Camera Settings -->
     <article>
         <header><strong>Camera</strong></header>
@@ -104,6 +113,25 @@
                    {% if config.stream.auto_start %}checked{% endif %}>
             Auto-start stream on boot
         </label>
+    </article>
+
+    <!-- Remote Access -->
+    <article>
+        <header><strong>Remote Access</strong></header>
+        <p><small>Access this dashboard from anywhere using a Cloudflare Tunnel.
+           Set up a tunnel in <a href="https://one.dash.cloudflare.com/" target="_blank">Cloudflare Zero Trust</a>,
+           then paste the tunnel token below.</small></p>
+
+        <label>
+            <input type="checkbox" name="remote_enabled" role="switch"
+                   {% if config.remote_access and config.remote_access.enabled %}checked{% endif %}>
+            Enable remote access
+        </label>
+
+        <label for="tunnel_token">Tunnel Token</label>
+        <input type="password" id="tunnel_token" name="tunnel_token"
+               value="{{ config.remote_access.tunnel_token or '' if config.remote_access else '' }}"
+               placeholder="eyJ...">
     </article>
 
     <!-- Save -->
