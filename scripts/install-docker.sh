@@ -88,9 +88,10 @@ echo "[5/6] Creating data directory..."
 mkdir -p data
 chown -R "$ACTUAL_USER:$ACTUAL_USER" data
 
-echo "[6/6] Starting RPie-Streamer..."
-# Build and start containers
-docker compose up -d --build
+echo "[6/6] Starting Fish Camz..."
+# Pull pre-built images and start (includes Watchtower for auto-updates)
+docker compose pull
+docker compose up -d
 
 echo ""
 echo "=========================================="

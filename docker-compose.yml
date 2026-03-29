@@ -1,5 +1,6 @@
 services:
   web:
+    image: ghcr.io/tjlondon-npauctions/fish-camz-streamer:latest
     build: .
     container_name: rpie-web
     command: python -m app.webapp
@@ -17,8 +18,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   streamer:
+    image: ghcr.io/tjlondon-npauctions/fish-camz-streamer:latest
     build: .
     container_name: rpie-streamer
     command: python -m app.main
@@ -33,6 +37,8 @@ services:
       timeout: 10s
       retries: 2
       start_period: 60s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   tunnel:
     image: cloudflare/cloudflared:latest
@@ -44,6 +50,18 @@ services:
     restart: unless-stopped
     profiles:
       - remote
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: rpie-watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=300
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_ROLLING_RESTART=true
+    restart: unless-stopped
 
 volumes:
   shared-state:
