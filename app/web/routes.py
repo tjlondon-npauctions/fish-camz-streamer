@@ -55,11 +55,15 @@ def settings():
         # Update camera settings
         manager.set_value(config, "camera", "rtsp_url", request.form.get("rtsp_url", "").strip())
         manager.set_value(config, "camera", "username", request.form.get("cam_username", "").strip())
-        manager.set_value(config, "camera", "password", request.form.get("cam_password", ""))
+        cam_password = request.form.get("cam_password", "")
+        if cam_password:  # Only overwrite if a new value was entered
+            manager.set_value(config, "camera", "password", cam_password)
         manager.set_value(config, "camera", "transport", request.form.get("transport", "tcp"))
 
         # Update Cloudflare settings
-        manager.set_value(config, "cloudflare", "stream_key", request.form.get("stream_key", "").strip())
+        stream_key = request.form.get("stream_key", "").strip()
+        if stream_key:  # Only overwrite if a new value was entered
+            manager.set_value(config, "cloudflare", "stream_key", stream_key)
         rtmps_url = request.form.get("rtmps_url", "").strip()
         if rtmps_url:
             manager.set_value(config, "cloudflare", "rtmps_url", rtmps_url)
@@ -122,6 +126,12 @@ def logs():
     return render_template("logs.html", config=config)
 
 
+@routes.route("/help")
+def help_page():
+    config = manager.load()
+    return render_template("help.html", config=config)
+
+
 @routes.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -130,6 +140,7 @@ def login():
         stored_hash = manager.get(config, "web", "password_hash", "")
 
         if check_password(password, stored_hash):
+            session.clear()  # Prevent session fixation
             session["authenticated"] = True
             return redirect(url_for("routes.dashboard"))
         else:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request
@@ -171,6 +172,20 @@ def common_urls():
     return jsonify({"urls": urls})
 
 
+def _redact_log_lines(lines):
+    """Remove credentials and stream keys from log output."""
+    patterns = [
+        (re.compile(r"(rtsp://[^:]+:)[^@]+(@)"), r"\1***\2"),
+        (re.compile(r"(rtmps?://[^\s]+/live/)\S+"), r"\1***"),
+    ]
+    result = []
+    for line in lines:
+        for pattern, replacement in patterns:
+            line = pattern.sub(replacement, line)
+        result.append(line)
+    return result
+
+
 @api.route("/logs")
 def get_logs():
     """Get recent log lines from the streamer container."""
@@ -182,7 +197,7 @@ def get_logs():
         client = docker.from_env()
         container = client.containers.get("rpie-streamer")
         log_output = container.logs(tail=lines, timestamps=True).decode("utf-8", errors="replace")
-        return jsonify({"logs": log_output.splitlines()})
+        return jsonify({"logs": _redact_log_lines(log_output.splitlines())})
     except Exception:
         # Fallback: try reading from Docker CLI
         import subprocess
@@ -194,6 +209,6 @@ def get_logs():
                 timeout=10,
             )
             output = result.stdout + result.stderr
-            return jsonify({"logs": output.splitlines()})
+            return jsonify({"logs": _redact_log_lines(output.splitlines())})
         except Exception as e:
             return jsonify({"logs": [], "error": str(e)})

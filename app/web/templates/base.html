@@ -16,6 +16,7 @@
             <li><a href="{{ url_for('routes.dashboard') }}" {% if request.endpoint == 'routes.dashboard' %}aria-current="page"{% endif %}>Dashboard</a></li>
             <li><a href="{{ url_for('routes.settings') }}" {% if request.endpoint == 'routes.settings' %}aria-current="page"{% endif %}>Settings</a></li>
             <li><a href="{{ url_for('routes.logs') }}" {% if request.endpoint == 'routes.logs' %}aria-current="page"{% endif %}>Logs</a></li>
+            <li><a href="{{ url_for('routes.help_page') }}" {% if request.endpoint == 'routes.help_page' %}aria-current="page"{% endif %}>Guide</a></li>
             <li><a href="{{ url_for('routes.logout') }}">Logout</a></li>
         </ul>
     </nav>

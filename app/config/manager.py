@@ -1,14 +1,19 @@
+import logging
 import os
 import secrets
 import shutil
+import tempfile
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CONFIG = BASE_DIR / "config" / "default_config.yaml"
 DATA_DIR = BASE_DIR / "data"
 CONFIG_FILE = DATA_DIR / "config.yaml"
+CONFIG_BACKUP = DATA_DIR / "config.yaml.bak"
 
 REQUIRED_FOR_STREAMING = [
     ("camera", "rtsp_url"),
@@ -28,18 +33,34 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def load() -> dict:
-    """Load config from data/config.yaml, creating from defaults if needed."""
+    """Load config from data/config.yaml, creating from defaults if needed.
+
+    If the config file is corrupted, attempts recovery from backup.
+    """
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
     if not CONFIG_FILE.exists():
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
         shutil.copy2(DEFAULT_CONFIG, CONFIG_FILE)
 
-    with open(CONFIG_FILE, "r") as f:
-        config = yaml.safe_load(f) or {}
+    config = _load_yaml(CONFIG_FILE)
+
+    # If corrupted, try backup
+    if config is None:
+        logger.warning("Config file corrupted, attempting recovery from backup...")
+        if CONFIG_BACKUP.exists():
+            config = _load_yaml(CONFIG_BACKUP)
+            if config is not None:
+                logger.info("Recovered config from backup.")
+                save(config)
+            else:
+                logger.error("Backup also corrupted. Resetting to defaults.")
+                config = {}
+        else:
+            logger.error("No backup available. Resetting to defaults.")
+            config = {}
 
     # Merge any new default keys that don't exist in user config
-    with open(DEFAULT_CONFIG, "r") as f:
-        defaults = yaml.safe_load(f) or {}
-
+    defaults = _load_yaml(DEFAULT_CONFIG) or {}
     config = _deep_merge(defaults, config)
 
     # Auto-generate secret key if missing
@@ -50,13 +71,49 @@ def load() -> dict:
     return config
 
 
+def _load_yaml(path: Path) -> dict:
+    """Load and validate a YAML file. Returns None if corrupted."""
+    try:
+        with open(path, "r") as f:
+            data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            return None
+        return data
+    except (yaml.YAMLError, OSError) as e:
+        logger.error("Failed to load %s: %s", path, e)
+        return None
+
+
 def save(config: dict) -> None:
-    """Save config to data/config.yaml."""
+    """Save config atomically with backup.
+
+    Writes to a temp file first, then renames (atomic on POSIX).
+    Keeps one backup of the previous config.
+    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w") as f:
-        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    # Restrict permissions to owner-only (protect stream key, password hash)
-    os.chmod(CONFIG_FILE, 0o600)
+
+    # Backup current config before overwriting
+    if CONFIG_FILE.exists():
+        try:
+            shutil.copy2(CONFIG_FILE, CONFIG_BACKUP)
+        except OSError:
+            pass
+
+    # Atomic write: temp file + rename
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=DATA_DIR, suffix=".yaml.tmp")
+        with os.fdopen(fd, "w") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        os.chmod(tmp_path, 0o600)
+        os.replace(tmp_path, CONFIG_FILE)
+    except OSError as e:
+        logger.error("Failed to save config: %s", e)
+        # Clean up temp file if rename failed
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def get(config: dict, section: str, key: str, default=None):

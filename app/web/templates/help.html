@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Setup Guide - Fish Camz{% endblock %}
+
+{% block content %}
+<h2>Setup Guide</h2>
+
+<article>
+    <header><strong>Network Setup</strong></header>
+
+    <p>The Fish Camz Box must be on the <strong>same network</strong> as the NVR or camera. On most vessels, everything connects through the Starlink router:</p>
+
+    <pre>
+Camera ──POE──► NVR (built-in POE switch)
+                  │
+                  ├── NVR main port ──► Starlink Router
+                  │                          │
+                  │                          ├── Fish Camz Box
+                  │                          └── Other devices
+                  │
+                  └── Internal POE ports (cameras only)
+    </pre>
+
+    <p><strong>Key point:</strong> The NVR's built-in POE switch creates a separate internal network for cameras. The Fish Camz Box cannot see the cameras directly &mdash; it must connect to the <strong>NVR's IP address</strong> to access the video stream.</p>
+</article>
+
+<article>
+    <header><strong>Connecting to a Uniview NVR</strong></header>
+
+    <p>If you have a Uniview NVR (e.g. NVR501-04B-P4-IQ), use this RTSP URL format:</p>
+
+    <pre>rtsp://admin:PASSWORD@NVR_IP:554/unicast/c1/s0/live</pre>
+
+    <table>
+        <thead>
+            <tr><th>Part</th><th>Meaning</th><th>Example</th></tr>
+        </thead>
+        <tbody>
+            <tr><td><code>admin</code></td><td>NVR username</td><td>admin</td></tr>
+            <tr><td><code>PASSWORD</code></td><td>NVR admin password</td><td>Set during NVR first-run</td></tr>
+            <tr><td><code>NVR_IP</code></td><td>NVR's IP on your network</td><td>192.168.1.64</td></tr>
+            <tr><td><code>c1</code></td><td>Channel number (POE port)</td><td>c1 = port 1, c2 = port 2, etc.</td></tr>
+            <tr><td><code>s0</code></td><td>Stream type</td><td>s0 = main (high quality), s1 = sub (lower)</td></tr>
+        </tbody>
+    </table>
+
+    <p>For example, a camera on NVR port 1 with NVR IP 192.168.1.64:</p>
+    <pre>rtsp://admin:MyPassword123@192.168.1.64:554/unicast/c1/s0/live</pre>
+</article>
+
+<article>
+    <header><strong>Recommended: Set H.264 on the NVR</strong></header>
+
+    <p>By default, Uniview cameras output <strong>H.265 (HEVC)</strong> at 5MP. This works, but forces the Fish Camz Box to re-encode the video (high CPU, lower quality). For best results:</p>
+
+    <ol>
+        <li>Open the NVR web admin: <code>http://NVR_IP</code> in a browser</li>
+        <li>Go to <strong>Settings</strong> &rarr; <strong>Camera</strong> &rarr; <strong>Video</strong> (or <strong>Encoding</strong>)</li>
+        <li>Change the <strong>Main Stream</strong> video codec from <strong>H.265</strong> to <strong>H.264</strong></li>
+        <li>Optionally reduce resolution to <strong>1920&times;1080</strong> (still excellent quality)</li>
+        <li>Click <strong>Save</strong></li>
+    </ol>
+
+    <table>
+        <thead>
+            <tr><th>Setting</th><th>With H.265 (default)</th><th>With H.264 (recommended)</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>CPU usage</td><td>~50-60%</td><td>~2-5%</td></tr>
+            <tr><td>Box temperature</td><td>~70-75&deg;C</td><td>~45-50&deg;C</td></tr>
+            <tr><td>Video quality</td><td>Re-encoded (some quality loss)</td><td>Passthrough (no quality loss)</td></tr>
+            <tr><td>Mode</td><td>Transcode</td><td>Codec copy</td></tr>
+        </tbody>
+    </table>
+
+    <p>After changing this, restart the stream from the <a href="{{ url_for('routes.dashboard') }}">Dashboard</a>. The logs should show <code>can_copy=True</code>.</p>
+</article>
+
+<article>
+    <header><strong>NVR Local Recording</strong></header>
+
+    <p>The NVR continues to record to its own hard drive regardless of the live stream. Fish Camz taps into the NVR's RTSP output &mdash; it doesn't affect the NVR's own recording or any other functions.</p>
+
+    <p>This means you have:</p>
+    <ul>
+        <li><strong>Local recording</strong> on the NVR (accessible via NVR app/web UI)</li>
+        <li><strong>Live stream</strong> via Fish Camz to Cloudflare (viewable on your website)</li>
+    </ul>
+</article>
+
+<article>
+    <header><strong>Connecting Directly to a Camera (No NVR)</strong></header>
+
+    <p>If you're connecting the Fish Camz Box directly to a camera (no NVR), both devices must be on the same network. Common RTSP URLs:</p>
+
+    <table>
+        <thead>
+            <tr><th>Brand</th><th>RTSP URL</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Uniview</td><td><code>rtsp://IP:554/unicast/c1/s0/live</code></td></tr>
+            <tr><td>Hikvision</td><td><code>rtsp://IP:554/Streaming/Channels/101</code></td></tr>
+            <tr><td>Dahua</td><td><code>rtsp://IP:554/cam/realmonitor?channel=1&amp;subtype=0</code></td></tr>
+            <tr><td>Reolink</td><td><code>rtsp://IP:554/1</code></td></tr>
+            <tr><td>Generic</td><td><code>rtsp://IP:554/stream1</code></td></tr>
+        </tbody>
+    </table>
+
+    <p>Use the <strong>Test Connection</strong> button in <a href="{{ url_for('routes.settings') }}">Settings</a> to verify the URL works before starting the stream.</p>
+</article>
+
+<article>
+    <header><strong>Troubleshooting</strong></header>
+
+    <dl>
+        <dt>Can't find the NVR/camera IP</dt>
+        <dd>Use the <strong>Scan Network</strong> button in Settings, or check your router's connected devices list.</dd>
+
+        <dt>Test Connection fails with "Connection refused"</dt>
+        <dd>Check the IP is correct, the device is powered on, and RTSP is enabled in the NVR settings (port 554).</dd>
+
+        <dt>Test Connection fails with "Unauthorized"</dt>
+        <dd>The username or password is wrong. Check the NVR's admin credentials.</dd>
+
+        <dt>Stream works but CPU is very high (>50%)</dt>
+        <dd>The camera is outputting H.265. Change to H.264 in the NVR settings (see above).</dd>
+
+        <dt>Dashboard shows "Stalled" or "Slow"</dt>
+        <dd>The Fish Camz Box can't keep up with transcoding. Reduce the resolution to 720p in Settings, or switch the camera to H.264.</dd>
+
+        <dt>Stream keeps restarting</dt>
+        <dd>Check the <a href="{{ url_for('routes.logs') }}">Logs</a> for error messages. Common causes: incorrect RTSP URL, network instability, Cloudflare stream key expired.</dd>
+    </dl>
+</article>
+{% endblock %}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -19,6 +20,19 @@ from app.streaming.health import HealthMonitor, HealthSnapshot
 
 logger = logging.getLogger(__name__)
 
+# Patterns to redact from log output
+_REDACT_PATTERNS = [
+    re.compile(r"(rtsp://[^:]+:)[^@]+(@)"),         # rtsp://user:PASSWORD@
+    re.compile(r"(rtmps?://[^\s]+/live/)\S+"),       # rtmps://.../live/STREAMKEY
+]
+
+
+def _redact(text: str) -> str:
+    """Redact credentials and stream keys from text for safe logging."""
+    text = _REDACT_PATTERNS[0].sub(r"\1***\2", text)
+    text = _REDACT_PATTERNS[1].sub(r"\1***", text)
+    return text
+
 
 class StreamEngine:
     """Manages an FFmpeg streaming subprocess with auto-restart."""
@@ -29,6 +43,7 @@ class StreamEngine:
         self._health = HealthMonitor(
             stall_timeout=manager.get(config, "stream", "stall_timeout", 30)
         )
+        self._stdout_thread: Optional[threading.Thread] = None
         self._stderr_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
@@ -59,12 +74,12 @@ class StreamEngine:
 
             # Build FFmpeg command
             cmd = build_command(self.config, probe)
-            logger.info("Starting FFmpeg: %s", " ".join(cmd))
+            logger.info("Starting FFmpeg: %s", _redact(" ".join(cmd)))
 
             try:
                 self._process = subprocess.Popen(
                     cmd,
-                    stdout=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
                     bufsize=1,
@@ -79,7 +94,14 @@ class StreamEngine:
             self._start_time = time.time()
             self._health.reset()
 
-            # Start stderr reader thread
+            # Read progress from stdout (-progress pipe:1)
+            self._stdout_thread = threading.Thread(
+                target=self._read_progress,
+                daemon=True,
+            )
+            self._stdout_thread.start()
+
+            # Read errors from stderr
             self._stderr_thread = threading.Thread(
                 target=self._read_stderr,
                 daemon=True,
@@ -111,9 +133,16 @@ class StreamEngine:
             process.kill()
             process.wait(timeout=5)
 
+        # Clean up reader threads to prevent file descriptor leaks
+        for thread in (self._stdout_thread, self._stderr_thread):
+            if thread and thread.is_alive():
+                thread.join(timeout=5)
+
         with self._lock:
             self._running = False
             self._process = None
+            self._stdout_thread = None
+            self._stderr_thread = None
             self._write_state()
 
     def restart(self) -> None:
@@ -223,8 +252,22 @@ class StreamEngine:
             logger.warning("Camera probe failed: %s (will use transcode mode)", e)
             return None
 
+    def _read_progress(self) -> None:
+        """Background thread: read FFmpeg -progress output from stdout."""
+        try:
+            for line in self._process.stdout:
+                if self._stop_event.is_set():
+                    break
+                line = line.strip()
+                if line:
+                    self._health.parse_line(line)
+                    # Periodically update the state file with new metrics
+                    self._write_state()
+        except (ValueError, OSError):
+            pass  # Process closed
+
     def _read_stderr(self) -> None:
-        """Background thread: read FFmpeg stderr and feed to health monitor."""
+        """Background thread: read FFmpeg stderr for errors."""
         early_lines = []
         try:
             for line in self._process.stderr:
@@ -233,8 +276,6 @@ class StreamEngine:
                 line = line.strip()
                 if not line:
                     continue
-
-                self._health.parse_line(line)
 
                 # Capture early output for crash diagnostics
                 if len(early_lines) < 50:

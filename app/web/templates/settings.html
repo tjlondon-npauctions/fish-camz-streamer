@@ -22,9 +22,10 @@
         <div role="group">
             <input type="text" id="rtsp_url" name="rtsp_url"
                    value="{{ config.camera.rtsp_url or '' }}"
-                   placeholder="rtsp://192.168.1.100:554/stream1">
+                   placeholder="rtsp://192.168.1.100:554/unicast/c1/s0/live">
             <button type="button" class="outline" onclick="scanCameras()">Scan Network</button>
         </div>
+        <p><small>If you have an NVR, use the NVR's IP (not the camera). Uniview NVR: <code>rtsp://IP:554/unicast/c1/s0/live</code> where c1 = channel 1.</small></p>
         <div id="scan-results" class="hidden"></div>
 
         <div class="grid">
@@ -37,7 +38,7 @@
             <div>
                 <label for="cam_password">Camera Password</label>
                 <input type="password" id="cam_password" name="cam_password"
-                       value="{{ config.camera.password or '' }}">
+                       placeholder="{{ '••••••••' if config.camera.password else '' }}">
             </div>
         </div>
 
@@ -62,8 +63,7 @@
 
         <label for="stream_key">Stream Key</label>
         <input type="password" id="stream_key" name="stream_key"
-               value="{{ config.cloudflare.stream_key or '' }}"
-               placeholder="Your Cloudflare stream key">
+               placeholder="{{ '••••••••' if config.cloudflare.stream_key else 'Your Cloudflare stream key' }}">
     </article>
 
     <!-- Encoding Settings -->
@@ -130,8 +130,7 @@
 
         <label for="tunnel_token">Tunnel Token</label>
         <input type="password" id="tunnel_token" name="tunnel_token"
-               value="{{ config.remote_access.tunnel_token or '' if config.remote_access else '' }}"
-               placeholder="eyJ...">
+               placeholder="{{ '••••••••' if config.remote_access and config.remote_access.tunnel_token else 'eyJ...' }}">
     </article>
 
     <!-- Save -->

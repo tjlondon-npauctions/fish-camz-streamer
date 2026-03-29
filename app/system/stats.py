@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 import psutil
@@ -69,7 +70,6 @@ def _cpu_temperature() -> float:
 
 def _system_uptime() -> int:
     """System uptime in seconds."""
-    import time
     return int(time.time() - psutil.boot_time())
 
 

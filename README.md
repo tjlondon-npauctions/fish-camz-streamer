@@ -74,15 +74,19 @@ The setup wizard will walk you through:
 
 ## Common RTSP URLs by Camera Brand
 
-| Brand     | Typical RTSP URL                                     |
-|-----------|------------------------------------------------------|
-| Uniview   | `rtsp://<ip>:554/unicast/c1/s0/live`                 |
-| Hikvision | `rtsp://<ip>:554/Streaming/Channels/101`             |
-| Dahua     | `rtsp://<ip>:554/cam/realmonitor?channel=1&subtype=0`|
-| Reolink   | `rtsp://<ip>:554/1`                                  |
-| Amcrest   | `rtsp://<ip>:554/h264Preview_01_main`                |
-| Axis      | `rtsp://<ip>:554/media/video1`                       |
-| Generic   | `rtsp://<ip>:554/stream1`                            |
+| Device | Typical RTSP URL |
+|--------|------------------|
+| Uniview camera | `rtsp://<ip>:554/unicast/c1/s0/live` |
+| Uniview NVR (ch1) | `rtsp://<nvr-ip>:554/unicast/c1/s0/live` |
+| Uniview NVR (ch2) | `rtsp://<nvr-ip>:554/unicast/c2/s0/live` |
+| Hikvision | `rtsp://<ip>:554/Streaming/Channels/101` |
+| Dahua | `rtsp://<ip>:554/cam/realmonitor?channel=1&subtype=0` |
+| Reolink | `rtsp://<ip>:554/1` |
+| Amcrest | `rtsp://<ip>:554/h264Preview_01_main` |
+| Axis | `rtsp://<ip>:554/media/video1` |
+| Generic | `rtsp://<ip>:554/stream1` |
+
+**Note:** If you have an NVR (e.g. Uniview NVR501), connect to the NVR's IP — not the camera directly. The NVR's built-in POE switch creates an internal network for cameras that your Pi can't reach. The NVR proxies the camera streams on its main network IP.
 
 ## Managing the Streamer
 

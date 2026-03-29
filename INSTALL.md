@@ -231,16 +231,19 @@ This works from any device on the same network — no need to know the IP addres
 
 **Common RTSP URLs by camera brand:**
 
-| Brand | URL Pattern |
-|-------|-------------|
-| **Uniview** | **`rtsp://192.168.1.x:554/unicast/c1/s0/live`** |
-| Uniview (sub) | `rtsp://192.168.1.x:554/unicast/c1/s1/live` |
+| Device | URL Pattern |
+|--------|-------------|
+| **Uniview NVR (ch1)** | **`rtsp://192.168.1.x:554/unicast/c1/s0/live`** |
+| Uniview NVR (ch2) | `rtsp://192.168.1.x:554/unicast/c2/s0/live` |
+| Uniview camera | `rtsp://192.168.1.x:554/unicast/c1/s0/live` |
 | Hikvision | `rtsp://192.168.1.x:554/Streaming/Channels/101` |
 | Dahua | `rtsp://192.168.1.x:554/cam/realmonitor?channel=1&subtype=0` |
 | Reolink | `rtsp://192.168.1.x:554/1` |
 | Amcrest | `rtsp://192.168.1.x:554/h264Preview_01_main` |
 | Axis | `rtsp://192.168.1.x:554/media/video1` |
 | Generic | `rtsp://192.168.1.x:554/stream1` |
+
+**Important — NVR setup:** If you have a Uniview NVR (e.g. NVR501-04B-P4-IQ), connect to the **NVR's IP address**, not the camera's. The NVR has a built-in POE switch that creates an internal network for cameras — your Pi can't reach the cameras directly. The NVR exposes each camera as a channel: `c1` = port 1, `c2` = port 2, etc.
 
 Replace `192.168.1.x` with your camera's actual IP address.
 

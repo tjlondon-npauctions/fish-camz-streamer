@@ -28,7 +28,7 @@ def build_command(config: dict, probe: Optional[StreamInfo] = None) -> list[str]
     rtsp_url = _build_rtsp_url(cam)
     rtmps_url = _build_rtmps_url(cf)
 
-    cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-progress", "pipe:2", "-stats_period", "2"]
+    cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-progress", "pipe:1"]
 
     # Input options
     cmd += _input_args(cam, rtsp_url)
