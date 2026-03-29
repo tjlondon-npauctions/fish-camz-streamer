@@ -17,6 +17,21 @@ logger = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
+VERSION_FILE = Path(__file__).resolve().parent.parent.parent / "VERSION"
+
+
+def _get_version() -> str:
+    try:
+        return VERSION_FILE.read_text().strip()
+    except OSError:
+        return "unknown"
+
+
+@api.route("/version")
+def version():
+    """Current software version."""
+    return jsonify({"version": _get_version()})
+
 
 def _read_state_file(filename: str) -> dict:
     """Read a JSON state file from tmpfs."""

@@ -1,6 +1,6 @@
 /* Fish Camz custom styles */
 
-/* Status indicators */
+/* ---- Status indicators ---- */
 .indicator {
     display: inline-block;
     width: 12px;
@@ -25,36 +25,122 @@
     box-shadow: 0 0 6px #f59e0b;
 }
 
-/* Flash messages */
+/* ---- Status banner ---- */
+.status-banner {
+    text-align: center;
+    padding: 0.75rem 1rem;
+    border-radius: var(--pico-border-radius);
+    margin-bottom: 1.5rem;
+    border: 1px solid;
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+.status-online {
+    background-color: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.status-offline {
+    background-color: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.status-warning {
+    background-color: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+/* ---- Flash messages ---- */
 .flash-success {
     color: #22c55e;
     border-left: 4px solid #22c55e;
-    padding-left: 1rem;
+    padding: 0.75rem 1rem;
 }
 
 .flash-error {
     color: #ef4444;
     border-left: 4px solid #ef4444;
-    padding-left: 1rem;
+    padding: 0.75rem 1rem;
 }
 
 .flash-info {
     color: #3b82f6;
     border-left: 4px solid #3b82f6;
-    padding-left: 1rem;
+    padding: 0.75rem 1rem;
 }
 
-/* Log viewer */
+/* ---- Toast notifications ---- */
+#toast-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.toast {
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--pico-border-radius);
+    font-size: 0.9rem;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: opacity 0.3s, transform 0.3s;
+    max-width: 350px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.toast-visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast-success {
+    background-color: #166534;
+    color: #dcfce7;
+    border-left: 4px solid #22c55e;
+}
+
+.toast-error {
+    background-color: #7f1d1d;
+    color: #fecaca;
+    border-left: 4px solid #ef4444;
+}
+
+.toast-info {
+    background-color: #1e3a5f;
+    color: #dbeafe;
+    border-left: 4px solid #3b82f6;
+}
+
+/* ---- Navigation active state ---- */
+nav a[aria-current="page"] {
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+
+/* ---- Text colors ---- */
+.text-success { color: #22c55e; }
+.text-error { color: #ef4444; }
+.text-warning { color: #f59e0b; }
+.text-muted { opacity: 0.6; }
+
+/* ---- Log viewer ---- */
 .log-viewer {
-    max-height: 60vh;
+    max-height: 65vh;
     overflow-y: auto;
-    font-size: 0.8rem;
-    line-height: 1.4;
+    font-size: 0.85rem;
+    line-height: 1.5;
     white-space: pre-wrap;
-    word-break: break-all;
+    word-wrap: break-word;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 1rem;
+    border-radius: var(--pico-border-radius);
 }
 
-/* Setup wizard steps */
+/* ---- Setup wizard steps ---- */
 .setup-steps {
     display: flex;
     list-style: none;
@@ -69,25 +155,26 @@
     padding: 0.5rem;
     border-radius: 4px;
     font-size: 0.85rem;
-    opacity: 0.4;
+    opacity: 0.35;
 }
 
 .setup-steps li.active {
     opacity: 1;
     font-weight: bold;
-    border-bottom: 2px solid var(--pico-primary);
+    border-bottom: 3px solid var(--pico-primary);
 }
 
 .setup-steps li.done {
     opacity: 0.7;
+    text-decoration: line-through;
 }
 
-/* Utility */
+/* ---- Utility ---- */
 .hidden {
-    display: none;
+    display: none !important;
 }
 
-/* Dashboard description lists */
+/* ---- Dashboard description lists ---- */
 dl {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -97,4 +184,33 @@ dl {
 dt {
     font-weight: 600;
     opacity: 0.7;
+}
+
+/* ---- Version ---- */
+.version-text {
+    text-align: center;
+    opacity: 0.3;
+    font-size: 0.8rem;
+    margin-top: 2rem;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 576px) {
+    .setup-steps {
+        flex-direction: column;
+    }
+
+    .setup-steps li {
+        text-align: left;
+        padding: 0.25rem 0.5rem;
+    }
+
+    #toast-container {
+        right: 0.5rem;
+        left: 0.5rem;
+    }
+
+    .toast {
+        max-width: none;
+    }
 }

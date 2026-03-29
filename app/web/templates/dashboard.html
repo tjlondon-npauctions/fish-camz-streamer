@@ -8,33 +8,20 @@
 <h2>Dashboard</h2>
 {% endif %}
 
-<!-- Stream uptime banner -->
-<article id="uptime-banner" class="hidden" style="text-align:center; padding: 0.75rem;">
+<!-- Stream status banner -->
+<article id="uptime-banner" class="status-banner status-offline">
     <span id="status-indicator" class="indicator indicator-offline"></span>
-    <strong id="stream-status">Loading...</strong>
-    &nbsp;&mdash;&nbsp; Streaming for <strong id="stream-uptime">--</strong>
+    <strong id="stream-status">Connecting...</strong>
+    <span id="uptime-text" class="hidden"> &mdash; Streaming for <strong id="stream-uptime">--</strong></span>
 </article>
 
-<div class="grid">
-    <!-- Stream Status -->
-    <article id="stream-card">
-        <header><strong>Stream</strong></header>
-        <dl>
-            <dt>Restarts</dt>
-            <dd id="stream-restarts">--</dd>
-        </dl>
-        <footer>
-            <div role="group">
-                <button class="outline" onclick="streamControl('start')">Start</button>
-                <button class="outline" onclick="streamControl('stop')">Stop</button>
-                <button class="outline" onclick="streamControl('restart')">Restart</button>
-            </div>
-        </footer>
-    </article>
+<!-- Toast notification area -->
+<div id="toast-container"></div>
 
-    <!-- Stream Metrics -->
+<div class="grid">
+    <!-- Stream Controls + Metrics -->
     <article>
-        <header><strong>Stream Metrics</strong></header>
+        <header><strong>Stream</strong></header>
         <dl>
             <dt>FPS</dt>
             <dd id="stream-fps">--</dd>
@@ -44,11 +31,18 @@
             <dd id="stream-speed">--</dd>
             <dt>Frames</dt>
             <dd id="stream-frames">--</dd>
+            <dt>Restarts</dt>
+            <dd id="stream-restarts">0</dd>
         </dl>
+        <footer>
+            <div role="group">
+                <button id="btn-start" class="outline" onclick="streamControl('start', this)">Start</button>
+                <button id="btn-stop" class="outline" onclick="streamControl('stop', this)">Stop</button>
+                <button id="btn-restart" class="outline" onclick="streamControl('restart', this)">Restart</button>
+            </div>
+        </footer>
     </article>
-</div>
 
-<div class="grid">
     <!-- System Resources -->
     <article>
         <header><strong>System</strong></header>
@@ -61,14 +55,7 @@
             <dd id="sys-temp">--</dd>
             <dt>Disk</dt>
             <dd id="sys-disk">--</dd>
-        </dl>
-    </article>
-
-    <!-- Network -->
-    <article>
-        <header><strong>Network</strong></header>
-        <dl>
-            <dt>Status</dt>
+            <dt>Network</dt>
             <dd id="net-status">--</dd>
             <dt>Latency</dt>
             <dd id="net-latency">--</dd>
@@ -78,9 +65,12 @@
 
 <div id="error-banner" class="hidden">
     <article class="flash-error">
-        <strong>Alert:</strong> <span id="error-text"></span>
+        <strong>Error:</strong> <span id="error-text"></span>
     </article>
 </div>
+
+<!-- Version -->
+<p class="version-text" id="version-text"></p>
 {% endblock %}
 
 {% block scripts %}

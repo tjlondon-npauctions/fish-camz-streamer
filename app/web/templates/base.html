@@ -13,9 +13,9 @@
             <li><strong>Fish Camz</strong>{% if config and config.vessel and config.vessel.name %} <small>&mdash; {{ config.vessel.name }}</small>{% endif %}</li>
         </ul>
         <ul>
-            <li><a href="{{ url_for('routes.dashboard') }}">Dashboard</a></li>
-            <li><a href="{{ url_for('routes.settings') }}">Settings</a></li>
-            <li><a href="{{ url_for('routes.logs') }}">Logs</a></li>
+            <li><a href="{{ url_for('routes.dashboard') }}" {% if request.endpoint == 'routes.dashboard' %}aria-current="page"{% endif %}>Dashboard</a></li>
+            <li><a href="{{ url_for('routes.settings') }}" {% if request.endpoint == 'routes.settings' %}aria-current="page"{% endif %}>Settings</a></li>
+            <li><a href="{{ url_for('routes.logs') }}" {% if request.endpoint == 'routes.logs' %}aria-current="page"{% endif %}>Logs</a></li>
             <li><a href="{{ url_for('routes.logout') }}">Logout</a></li>
         </ul>
     </nav>
