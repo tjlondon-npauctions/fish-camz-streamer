@@ -222,35 +222,42 @@ def setup():
 
 
 def _start_tunnel(token: str) -> None:
-    """Start the Cloudflare Tunnel container."""
-    import subprocess
-    import os
+    """Start the Cloudflare Tunnel container via Docker SDK."""
     try:
-        env = os.environ.copy()
-        env["TUNNEL_TOKEN"] = token
-        subprocess.run(
-            ["docker", "compose", "--profile", "remote", "up", "-d", "tunnel"],
-            capture_output=True,
-            timeout=30,
-            env=env,
+        import docker
+        client = docker.from_env()
+
+        # Remove existing tunnel container if present
+        try:
+            old = client.containers.get("rpie-tunnel")
+            old.stop(timeout=10)
+            old.remove()
+        except docker.errors.NotFound:
+            pass
+
+        # Start new tunnel container
+        client.containers.run(
+            "cloudflare/cloudflared:latest",
+            command=["tunnel", "run"],
+            name="rpie-tunnel",
+            environment={"TUNNEL_TOKEN": token},
+            network_mode="host",
+            restart_policy={"Name": "unless-stopped"},
+            detach=True,
         )
+        logger.info("Cloudflare Tunnel container started")
     except Exception as e:
         logger.warning("Could not start tunnel: %s", e)
 
 
 def _stop_tunnel() -> None:
     """Stop the Cloudflare Tunnel container."""
-    import subprocess
     try:
-        subprocess.run(
-            ["docker", "stop", "rpie-tunnel"],
-            capture_output=True,
-            timeout=15,
-        )
-        subprocess.run(
-            ["docker", "rm", "rpie-tunnel"],
-            capture_output=True,
-            timeout=10,
-        )
+        import docker
+        client = docker.from_env()
+        container = client.containers.get("rpie-tunnel")
+        container.stop(timeout=10)
+        container.remove()
+        logger.info("Cloudflare Tunnel container stopped")
     except Exception as e:
         logger.debug("Tunnel stop: %s", e)
