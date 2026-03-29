@@ -77,7 +77,7 @@ def _input_args(cam: dict, rtsp_url: str) -> list[str]:
         # RTSP-specific options (reconnect flags are NOT valid for RTSP)
         args += ["-rtsp_transport", transport]
         # Timeout for RTSP connection (microseconds)
-        args += ["-stimeout", "10000000"]
+        args += ["-timeout", "10000000"]
     else:
         # HTTP/RTMP reconnect options (only valid for these protocols)
         args += ["-reconnect", "1"]

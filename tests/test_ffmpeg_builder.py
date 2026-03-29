@@ -158,7 +158,7 @@ class TestInputOutput:
         cmd = build_command(_base_config(), _h264_aac_probe())
         assert "-reconnect" not in cmd
         assert "-reconnect_streamed" not in cmd
-        assert "-stimeout" in cmd
+        assert "-timeout" in cmd
 
     def test_http_has_reconnect_flags(self):
         """HTTP inputs should have reconnect flags."""
