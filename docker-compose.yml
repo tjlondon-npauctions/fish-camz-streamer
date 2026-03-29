@@ -61,6 +61,7 @@ services:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_LABEL_ENABLE=true
       - WATCHTOWER_ROLLING_RESTART=true
+      - DOCKER_API_VERSION=1.45
     restart: unless-stopped
 
 volumes:
