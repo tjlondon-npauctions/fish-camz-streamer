@@ -129,6 +129,23 @@ class TestTranscodeMode:
         cmd = build_command(config, _h264_no_audio_probe())
         assert "-an" in cmd
 
+    def test_auto_downscale_high_res(self):
+        """5MP+ sources should auto-downscale to 720p when transcoding."""
+        config = _base_config(encoding={"mode": "transcode", "resolution": "source"})
+        probe = StreamInfo(
+            video_codec="hevc", width=2880, height=1620, framerate=25.0,
+            is_h264=False, is_aac=False, can_copy=False,
+        )
+        cmd = build_command(config, probe)
+        assert "-vf" in cmd
+        assert "scale=1280:720" in cmd[cmd.index("-vf") + 1]
+
+    def test_no_downscale_1080p(self):
+        """1080p should not be auto-downscaled."""
+        config = _base_config(encoding={"mode": "transcode", "resolution": "source"})
+        cmd = build_command(config, _h265_probe())  # 1920x1080
+        assert "-vf" not in cmd
+
 
 class TestInputOutput:
     def test_rtsp_transport(self):
@@ -136,11 +153,19 @@ class TestInputOutput:
         idx = cmd.index("-rtsp_transport")
         assert cmd[idx + 1] == "tcp"
 
-    def test_reconnect_flags(self):
+    def test_rtsp_no_reconnect_flags(self):
+        """RTSP inputs must NOT have -reconnect flags (they only work with HTTP/RTMP)."""
         cmd = build_command(_base_config(), _h264_aac_probe())
+        assert "-reconnect" not in cmd
+        assert "-reconnect_streamed" not in cmd
+        assert "-stimeout" in cmd
+
+    def test_http_has_reconnect_flags(self):
+        """HTTP inputs should have reconnect flags."""
+        config = _base_config(camera={"rtsp_url": "http://192.168.1.100/stream"})
+        cmd = build_command(config, _h264_aac_probe())
         assert "-reconnect" in cmd
-        assert "-reconnect_streamed" in cmd
-        assert "-reconnect_delay_max" in cmd
+        assert "-rtsp_transport" not in cmd
 
     def test_rtmps_output(self):
         cmd = build_command(_base_config(), _h264_aac_probe())

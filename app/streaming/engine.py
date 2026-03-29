@@ -224,19 +224,35 @@ class StreamEngine:
 
     def _read_stderr(self) -> None:
         """Background thread: read FFmpeg stderr and feed to health monitor."""
+        early_lines = []
         try:
             for line in self._process.stderr:
                 if self._stop_event.is_set():
                     break
                 line = line.strip()
-                if line:
-                    self._health.parse_line(line)
-                    # Log warnings/errors from FFmpeg
-                    if any(lvl in line.lower() for lvl in ("error", "fatal")):
-                        logger.error("FFmpeg: %s", line)
-                        self._last_error = line
+                if not line:
+                    continue
+
+                self._health.parse_line(line)
+
+                # Capture early output for crash diagnostics
+                if len(early_lines) < 50:
+                    early_lines.append(line)
+
+                # Log warnings/errors from FFmpeg
+                if any(lvl in line.lower() for lvl in ("error", "fatal", "invalid", "unknown")):
+                    logger.error("FFmpeg: %s", line)
+                    self._last_error = line
         except (ValueError, OSError):
             pass  # Process closed
+
+        # If FFmpeg exited quickly, dump all captured output for debugging
+        if early_lines and self._process and self._process.poll() is not None:
+            exit_code = self._process.returncode
+            if exit_code != 0:
+                logger.error("FFmpeg exited with code %d. Output:", exit_code)
+                for line in early_lines:
+                    logger.error("  %s", line)
 
     def _write_state(self) -> None:
         """Write current state to tmpfs for the web UI to read."""

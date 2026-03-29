@@ -71,13 +71,20 @@ def _input_args(cam: dict, rtsp_url: str) -> list[str]:
     """Build input-side FFmpeg arguments."""
     transport = cam.get("transport", "tcp")
 
-    args = [
-        "-rtsp_transport", transport,
-        "-reconnect", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "30",
-        "-i", rtsp_url,
-    ]
+    args = []
+
+    if rtsp_url.startswith("rtsp://"):
+        # RTSP-specific options (reconnect flags are NOT valid for RTSP)
+        args += ["-rtsp_transport", transport]
+        # Timeout for RTSP connection (microseconds)
+        args += ["-stimeout", "10000000"]
+    else:
+        # HTTP/RTMP reconnect options (only valid for these protocols)
+        args += ["-reconnect", "1"]
+        args += ["-reconnect_streamed", "1"]
+        args += ["-reconnect_delay_max", "30"]
+
+    args += ["-i", rtsp_url]
 
     return args
 
@@ -118,7 +125,11 @@ def _transcode_args(enc: dict, probe: Optional[StreamInfo]) -> list[str]:
 
     # Resolution scaling
     resolution = enc.get("resolution", "source")
-    if resolution != "source" and "x" in str(resolution):
+    if resolution == "source" and probe and probe.width > 1920:
+        # Auto-downscale high-res sources (e.g. 5MP) to 1280x720 when transcoding
+        # to keep CPU usage manageable on a Raspberry Pi
+        args += ["-vf", "scale=1280:720"]
+    elif resolution != "source" and "x" in str(resolution):
         parts = str(resolution).split("x")
         if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
             args += ["-vf", f"scale={parts[0]}:{parts[1]}"]
