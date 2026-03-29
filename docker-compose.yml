@@ -1,0 +1,44 @@
+services:
+  web:
+    build: .
+    container_name: rpie-web
+    command: python -m app.webapp
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - shared-state:/run/rpie
+    restart: unless-stopped
+    depends_on:
+      - streamer
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/status')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  streamer:
+    build: .
+    container_name: rpie-streamer
+    command: python -m app.main
+    network_mode: host
+    volumes:
+      - ./data:/app/data
+      - shared-state:/run/rpie
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, time; s=os.stat('/run/rpie/state.json'); exit(0 if time.time()-s.st_mtime<300 else 1)"]
+      interval: 60s
+      timeout: 10s
+      retries: 2
+      start_period: 60s
+
+volumes:
+  shared-state:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=50m"

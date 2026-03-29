@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}RPie-Streamer{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="container-fluid">
+        <ul>
+            <li><strong>RPie-Streamer</strong></li>
+        </ul>
+        <ul>
+            <li><a href="{{ url_for('routes.dashboard') }}">Dashboard</a></li>
+            <li><a href="{{ url_for('routes.settings') }}">Settings</a></li>
+            <li><a href="{{ url_for('routes.logs') }}">Logs</a></li>
+            <li><a href="{{ url_for('routes.logout') }}">Logout</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <article class="flash-{{ category }}">
+            {{ message }}
+        </article>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="container">
+        <small>RPie-Streamer &mdash; Fishing Vessel Live Streaming</small>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

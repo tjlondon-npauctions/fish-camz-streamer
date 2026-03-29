@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Setup - RPie-Streamer</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <main class="container" style="max-width: 600px; margin-top: 5vh;">
+        <h2>RPie-Streamer Setup</h2>
+
+        <!-- Progress -->
+        <nav aria-label="Setup progress">
+            <ul class="setup-steps">
+                <li class="{% if step == 1 %}active{% elif step > 1 %}done{% endif %}">1. Password</li>
+                <li class="{% if step == 2 %}active{% elif step > 2 %}done{% endif %}">2. Camera</li>
+                <li class="{% if step == 3 %}active{% elif step > 3 %}done{% endif %}">3. Cloudflare</li>
+                <li class="{% if step == 4 %}active{% endif %}">4. Start</li>
+            </ul>
+        </nav>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <p class="flash-{{ category }}">{{ message }}</p>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        {% if step == 1 %}
+        <!-- Step 1: Create Password -->
+        <article>
+            <header><strong>Create Admin Account</strong></header>
+            <form method="post">
+                <input type="hidden" name="step" value="1">
+
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" value="admin" required>
+
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required
+                       placeholder="At least 6 characters" minlength="6" autofocus>
+
+                <label for="confirm_password">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" required>
+
+                <button type="submit">Next: Camera Setup</button>
+            </form>
+        </article>
+
+        {% elif step == 2 %}
+        <!-- Step 2: Camera -->
+        <article>
+            <header><strong>Camera Setup</strong></header>
+            <form method="post">
+                <input type="hidden" name="step" value="2">
+
+                <label for="rtsp_url">Camera RTSP URL</label>
+                <div role="group">
+                    <input type="text" id="rtsp_url" name="rtsp_url"
+                           value="{{ config.camera.rtsp_url or '' }}"
+                           placeholder="rtsp://192.168.1.100:554/stream1">
+                    <button type="button" class="outline" onclick="scanCameras()">Scan</button>
+                </div>
+                <div id="scan-results" class="hidden"></div>
+
+                <details>
+                    <summary>Camera Credentials (if required)</summary>
+                    <div class="grid">
+                        <div>
+                            <label for="cam_username">Username</label>
+                            <input type="text" id="cam_username" name="cam_username"
+                                   placeholder="admin">
+                        </div>
+                        <div>
+                            <label for="cam_password">Password</label>
+                            <input type="password" id="cam_password" name="cam_password">
+                        </div>
+                    </div>
+                </details>
+
+                <button type="button" class="outline" onclick="probeCamera()" style="margin-bottom:1rem">
+                    Test Connection
+                </button>
+                <div id="probe-results" class="hidden"></div>
+
+                <button type="submit">Next: Cloudflare Setup</button>
+            </form>
+        </article>
+
+        <script>
+        function setText(el, text) {
+            while (el.firstChild) el.removeChild(el.firstChild);
+            var p = document.createElement('p');
+            p.textContent = text;
+            el.appendChild(p);
+        }
+
+        function scanCameras() {
+            const div = document.getElementById('scan-results');
+            div.className = '';
+            div.innerHTML = '<p aria-busy="true">Scanning...</p>';
+            fetch('/api/cameras/scan')
+                .then(r => r.json())
+                .then(data => {
+                    div.innerHTML = '';
+                    if (data.cameras && data.cameras.length > 0) {
+                        var heading = document.createElement('p');
+                        heading.textContent = 'Found ' + data.cameras.length + ' camera(s):';
+                        div.appendChild(heading);
+                        var ul = document.createElement('ul');
+                        data.cameras.forEach(function(cam) {
+                            var li = document.createElement('li');
+                            var a = document.createElement('a');
+                            a.href = '#';
+                            a.textContent = cam.name + ' (' + cam.ip + ')';
+                            a.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                document.getElementById('rtsp_url').value = cam.xaddrs;
+                            });
+                            li.appendChild(a);
+                            ul.appendChild(li);
+                        });
+                        div.appendChild(ul);
+                    } else {
+                        setText(div, 'No cameras found. Enter the RTSP URL manually.');
+                    }
+                })
+                .catch(function() { setText(div, 'Scan failed.'); });
+        }
+
+        function probeCamera() {
+            const url = document.getElementById('rtsp_url').value;
+            if (!url) { alert('Enter an RTSP URL first.'); return; }
+            const div = document.getElementById('probe-results');
+            div.className = '';
+            div.innerHTML = '<p aria-busy="true">Testing...</p>';
+            fetch('/api/camera/probe?url=' + encodeURIComponent(url))
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        setText(div, 'Failed: ' + data.error);
+                    } else {
+                        var msg = 'Connected! ' + data.video_codec + ' ' + data.resolution +
+                            ' @ ' + data.framerate + 'fps' +
+                            (data.can_copy ? ' (passthrough OK)' : ' (will transcode)');
+                        setText(div, msg);
+                    }
+                })
+                .catch(function() { setText(div, 'Test failed.'); });
+        }
+        </script>
+
+        {% elif step == 3 %}
+        <!-- Step 3: Cloudflare -->
+        <article>
+            <header><strong>Cloudflare Stream Setup</strong></header>
+            <p>Enter your Cloudflare Stream Live credentials.
+               Find these in your Cloudflare dashboard under Stream &gt; Live Inputs.</p>
+            <form method="post">
+                <input type="hidden" name="step" value="3">
+
+                <label for="rtmps_url">RTMPS Endpoint</label>
+                <input type="text" id="rtmps_url" name="rtmps_url"
+                       value="{{ config.cloudflare.rtmps_url or 'rtmps://live.cloudflare.com:443/live/' }}"
+                       placeholder="rtmps://live.cloudflare.com:443/live/">
+
+                <label for="stream_key">Stream Key</label>
+                <input type="text" id="stream_key" name="stream_key"
+                       value="{{ config.cloudflare.stream_key or '' }}"
+                       placeholder="Your stream key from Cloudflare" required>
+
+                <button type="submit">Next: Review &amp; Start</button>
+            </form>
+        </article>
+
+        {% elif step == 4 %}
+        <!-- Step 4: Confirm & Start -->
+        <article>
+            <header><strong>Ready to Stream</strong></header>
+
+            <dl>
+                <dt>Camera</dt>
+                <dd>{{ config.camera.rtsp_url or 'Not set' }}</dd>
+                <dt>Cloudflare Key</dt>
+                <dd>{{ config.cloudflare.stream_key[:8] }}... (hidden)</dd>
+                <dt>Encoding</dt>
+                <dd>{{ config.encoding.mode | capitalize }}</dd>
+                <dt>Auto-start</dt>
+                <dd>{{ 'Yes' if config.stream.auto_start else 'No' }}</dd>
+            </dl>
+
+            <form method="post">
+                <input type="hidden" name="step" value="4">
+                <button type="submit">Start Streaming</button>
+            </form>
+        </article>
+        {% endif %}
+    </main>
+</body>
+</html>

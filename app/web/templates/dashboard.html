@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - RPie-Streamer{% endblock %}
+
+{% block content %}
+<h2>Dashboard</h2>
+
+<div class="grid">
+    <!-- Stream Status -->
+    <article id="stream-card">
+        <header>
+            <span id="status-indicator" class="indicator indicator-offline"></span>
+            <strong>Stream Status</strong>
+        </header>
+        <dl>
+            <dt>Status</dt>
+            <dd id="stream-status">Loading...</dd>
+            <dt>Uptime</dt>
+            <dd id="stream-uptime">--</dd>
+            <dt>Restarts</dt>
+            <dd id="stream-restarts">--</dd>
+        </dl>
+        <footer>
+            <div role="group">
+                <button class="outline" onclick="streamControl('start')">Start</button>
+                <button class="outline" onclick="streamControl('stop')">Stop</button>
+                <button class="outline" onclick="streamControl('restart')">Restart</button>
+            </div>
+        </footer>
+    </article>
+
+    <!-- Stream Metrics -->
+    <article>
+        <header><strong>Stream Metrics</strong></header>
+        <dl>
+            <dt>FPS</dt>
+            <dd id="stream-fps">--</dd>
+            <dt>Bitrate</dt>
+            <dd id="stream-bitrate">--</dd>
+            <dt>Speed</dt>
+            <dd id="stream-speed">--</dd>
+            <dt>Frames</dt>
+            <dd id="stream-frames">--</dd>
+        </dl>
+    </article>
+</div>
+
+<div class="grid">
+    <!-- System Resources -->
+    <article>
+        <header><strong>System</strong></header>
+        <dl>
+            <dt>CPU</dt>
+            <dd id="sys-cpu">--</dd>
+            <dt>Memory</dt>
+            <dd id="sys-memory">--</dd>
+            <dt>Temperature</dt>
+            <dd id="sys-temp">--</dd>
+            <dt>Disk</dt>
+            <dd id="sys-disk">--</dd>
+        </dl>
+    </article>
+
+    <!-- Network -->
+    <article>
+        <header><strong>Network</strong></header>
+        <dl>
+            <dt>Status</dt>
+            <dd id="net-status">--</dd>
+            <dt>Latency</dt>
+            <dd id="net-latency">--</dd>
+        </dl>
+    </article>
+</div>
+
+<div id="error-banner" class="hidden">
+    <article class="flash-error">
+        <strong>Alert:</strong> <span id="error-text"></span>
+    </article>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

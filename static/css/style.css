@@ -1,0 +1,100 @@
+/* RPie-Streamer custom styles */
+
+/* Status indicators */
+.indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.indicator-online {
+    background-color: #22c55e;
+    box-shadow: 0 0 6px #22c55e;
+}
+
+.indicator-offline {
+    background-color: #ef4444;
+    box-shadow: 0 0 6px #ef4444;
+}
+
+.indicator-warning {
+    background-color: #f59e0b;
+    box-shadow: 0 0 6px #f59e0b;
+}
+
+/* Flash messages */
+.flash-success {
+    color: #22c55e;
+    border-left: 4px solid #22c55e;
+    padding-left: 1rem;
+}
+
+.flash-error {
+    color: #ef4444;
+    border-left: 4px solid #ef4444;
+    padding-left: 1rem;
+}
+
+.flash-info {
+    color: #3b82f6;
+    border-left: 4px solid #3b82f6;
+    padding-left: 1rem;
+}
+
+/* Log viewer */
+.log-viewer {
+    max-height: 60vh;
+    overflow-y: auto;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Setup wizard steps */
+.setup-steps {
+    display: flex;
+    list-style: none;
+    padding: 0;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.setup-steps li {
+    flex: 1;
+    text-align: center;
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    opacity: 0.4;
+}
+
+.setup-steps li.active {
+    opacity: 1;
+    font-weight: bold;
+    border-bottom: 2px solid var(--pico-primary);
+}
+
+.setup-steps li.done {
+    opacity: 0.7;
+}
+
+/* Utility */
+.hidden {
+    display: none;
+}
+
+/* Dashboard description lists */
+dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.25rem 1rem;
+}
+
+dt {
+    font-weight: 600;
+    opacity: 0.7;
+}

@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Settings - RPie-Streamer{% endblock %}
+
+{% block content %}
+<h2>Settings</h2>
+
+<form method="post">
+    <!-- Camera Settings -->
+    <article>
+        <header><strong>Camera</strong></header>
+
+        <label for="rtsp_url">RTSP URL</label>
+        <div role="group">
+            <input type="text" id="rtsp_url" name="rtsp_url"
+                   value="{{ config.camera.rtsp_url or '' }}"
+                   placeholder="rtsp://192.168.1.100:554/stream1">
+            <button type="button" class="outline" onclick="scanCameras()">Scan Network</button>
+        </div>
+        <div id="scan-results" class="hidden"></div>
+
+        <div class="grid">
+            <div>
+                <label for="cam_username">Camera Username</label>
+                <input type="text" id="cam_username" name="cam_username"
+                       value="{{ config.camera.username or '' }}"
+                       placeholder="admin">
+            </div>
+            <div>
+                <label for="cam_password">Camera Password</label>
+                <input type="password" id="cam_password" name="cam_password"
+                       value="{{ config.camera.password or '' }}">
+            </div>
+        </div>
+
+        <label for="transport">RTSP Transport</label>
+        <select id="transport" name="transport">
+            <option value="tcp" {% if config.camera.transport == 'tcp' %}selected{% endif %}>TCP (Recommended)</option>
+            <option value="udp" {% if config.camera.transport == 'udp' %}selected{% endif %}>UDP</option>
+        </select>
+
+        <button type="button" class="outline" onclick="probeCamera()">Test Camera Connection</button>
+        <div id="probe-results" class="hidden"></div>
+    </article>
+
+    <!-- Cloudflare Settings -->
+    <article>
+        <header><strong>Cloudflare Stream</strong></header>
+
+        <label for="rtmps_url">RTMPS Endpoint</label>
+        <input type="text" id="rtmps_url" name="rtmps_url"
+               value="{{ config.cloudflare.rtmps_url or '' }}"
+               placeholder="rtmps://live.cloudflare.com:443/live/">
+
+        <label for="stream_key">Stream Key</label>
+        <input type="password" id="stream_key" name="stream_key"
+               value="{{ config.cloudflare.stream_key or '' }}"
+               placeholder="Your Cloudflare stream key">
+    </article>
+
+    <!-- Encoding Settings -->
+    <article>
+        <header><strong>Encoding</strong></header>
+
+        <label for="encoding_mode">Mode</label>
+        <select id="encoding_mode" name="encoding_mode">
+            <option value="auto" {% if config.encoding.mode == 'auto' %}selected{% endif %}>Auto (copy if possible)</option>
+            <option value="copy" {% if config.encoding.mode == 'copy' %}selected{% endif %}>Copy (passthrough)</option>
+            <option value="transcode" {% if config.encoding.mode == 'transcode' %}selected{% endif %}>Transcode (re-encode)</option>
+        </select>
+
+        <div class="grid">
+            <div>
+                <label for="video_bitrate">Video Bitrate</label>
+                <input type="text" id="video_bitrate" name="video_bitrate"
+                       value="{{ config.encoding.video_bitrate or '2500k' }}"
+                       placeholder="2500k">
+            </div>
+            <div>
+                <label for="preset">Encoding Preset</label>
+                <select id="preset" name="preset">
+                    <option value="ultrafast" {% if config.encoding.preset == 'ultrafast' %}selected{% endif %}>Ultrafast</option>
+                    <option value="veryfast" {% if config.encoding.preset == 'veryfast' %}selected{% endif %}>Very Fast</option>
+                    <option value="fast" {% if config.encoding.preset == 'fast' %}selected{% endif %}>Fast</option>
+                    <option value="medium" {% if config.encoding.preset == 'medium' %}selected{% endif %}>Medium</option>
+                </select>
+            </div>
+        </div>
+
+        <label for="resolution">Resolution</label>
+        <select id="resolution" name="resolution">
+            <option value="source" {% if config.encoding.resolution == 'source' %}selected{% endif %}>Source (no scaling)</option>
+            <option value="1920x1080" {% if config.encoding.resolution == '1920x1080' %}selected{% endif %}>1920x1080</option>
+            <option value="1280x720" {% if config.encoding.resolution == '1280x720' %}selected{% endif %}>1280x720</option>
+            <option value="854x480" {% if config.encoding.resolution == '854x480' %}selected{% endif %}>854x480</option>
+        </select>
+    </article>
+
+    <!-- Stream Behavior -->
+    <article>
+        <header><strong>Behavior</strong></header>
+
+        <label>
+            <input type="checkbox" name="auto_start" role="switch"
+                   {% if config.stream.auto_start %}checked{% endif %}>
+            Auto-start stream on boot
+        </label>
+    </article>
+
+    <!-- Save -->
+    <div role="group">
+        <button type="submit">Save Settings</button>
+        <button type="submit" name="restart_stream" value="1" class="outline">Save &amp; Restart Stream</button>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setText(el, text) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+    var p = document.createElement('p');
+    p.textContent = text;
+    el.appendChild(p);
+}
+
+function scanCameras() {
+    const div = document.getElementById('scan-results');
+    div.className = '';
+    div.innerHTML = '<p aria-busy="true">Scanning network for cameras...</p>';
+
+    fetch('/api/cameras/scan')
+        .then(r => r.json())
+        .then(data => {
+            div.innerHTML = '';
+            if (data.cameras && data.cameras.length > 0) {
+                var heading = document.createElement('p');
+                heading.textContent = 'Found ' + data.cameras.length + ' camera(s):';
+                div.appendChild(heading);
+                var ul = document.createElement('ul');
+                data.cameras.forEach(function(cam) {
+                    var li = document.createElement('li');
+                    var a = document.createElement('a');
+                    a.href = '#';
+                    a.textContent = cam.name + ' (' + cam.ip + ')';
+                    a.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        document.getElementById('rtsp_url').value = cam.xaddrs;
+                    });
+                    li.appendChild(a);
+                    ul.appendChild(li);
+                });
+                div.appendChild(ul);
+            } else {
+                setText(div, 'No cameras found. Try entering the RTSP URL manually.');
+            }
+        })
+        .catch(function() {
+            setText(div, 'Scan failed. Check network connectivity.');
+        });
+}
+
+function probeCamera() {
+    const url = document.getElementById('rtsp_url').value;
+    if (!url) { alert('Enter an RTSP URL first.'); return; }
+
+    const div = document.getElementById('probe-results');
+    div.className = '';
+    div.innerHTML = '<p aria-busy="true">Testing camera connection...</p>';
+
+    fetch('/api/camera/probe?url=' + encodeURIComponent(url))
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                setText(div, 'Failed: ' + data.error);
+            } else {
+                var msg = 'Connected! Video: ' + data.video_codec +
+                    ' ' + data.resolution + ' @ ' + data.framerate + 'fps' +
+                    (data.audio_codec ? ', Audio: ' + data.audio_codec : ', No audio') +
+                    (data.can_copy ? ' (codec copy OK)' : ' (will transcode)');
+                setText(div, msg);
+            }
+        })
+        .catch(function() {
+            setText(div, 'Connection test failed.');
+        });
+}
+</script>
+{% endblock %}

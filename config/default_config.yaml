@@ -1,0 +1,47 @@
+# RPie-Streamer Default Configuration
+# This file is copied to data/config.yaml on first run.
+# Edit via the web UI at http://<pi-ip>:8080 or manually.
+
+camera:
+  rtsp_url: ""                # e.g. rtsp://192.168.1.100:554/stream1
+  username: ""
+  password: ""
+  transport: "tcp"            # tcp (recommended) or udp
+
+cloudflare:
+  rtmps_url: "rtmps://live.cloudflare.com:443/live/"
+  stream_key: ""
+
+encoding:
+  mode: "auto"                # auto (copy if possible), copy, transcode
+  video_bitrate: "2500k"
+  max_video_bitrate: "3000k"
+  buffer_size: "5000k"
+  resolution: "source"        # "source" or e.g. "1280x720"
+  framerate: "source"         # "source" or e.g. 30
+  keyframe_interval: 2        # seconds (Cloudflare recommends 2)
+  audio_bitrate: "128k"
+  preset: "veryfast"          # libx264 preset: ultrafast, veryfast, fast, medium
+
+stream:
+  auto_start: true            # start streaming on boot if config is complete
+  restart_delay: 5            # seconds before first auto-restart attempt
+  max_restart_delay: 120      # cap for exponential backoff
+  stable_threshold: 60        # seconds of stable streaming to reset backoff
+  stall_timeout: 30           # seconds of no frames before declaring stall
+
+network:
+  check_interval: 30          # seconds between connectivity checks
+  check_host: "1.1.1.1"
+  outage_threshold: 60        # seconds before declaring extended outage
+
+web:
+  host: "0.0.0.0"
+  port: 8080
+  username: ""                # empty = first-run setup required
+  password_hash: ""
+  secret_key: ""              # auto-generated on first run
+
+system:
+  log_level: "INFO"
+  state_dir: "/run/rpie"      # tmpfs for volatile state

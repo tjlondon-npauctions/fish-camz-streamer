@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Logs - RPie-Streamer{% endblock %}
+
+{% block content %}
+<h2>Stream Logs</h2>
+
+<article>
+    <header>
+        <div role="group">
+            <button class="outline" onclick="fetchLogs()">Refresh</button>
+            <label style="margin-left: 1rem;">
+                <input type="checkbox" id="auto-scroll" checked role="switch">
+                Auto-scroll
+            </label>
+        </div>
+    </header>
+    <pre id="log-output" class="log-viewer">Loading logs...</pre>
+</article>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let logTimer;
+
+function fetchLogs() {
+    fetch('/api/logs?lines=200')
+        .then(r => r.json())
+        .then(data => {
+            const pre = document.getElementById('log-output');
+            if (data.logs && data.logs.length > 0) {
+                pre.textContent = data.logs.join('\n');
+            } else {
+                pre.textContent = 'No logs available.';
+            }
+            if (document.getElementById('auto-scroll').checked) {
+                pre.scrollTop = pre.scrollHeight;
+            }
+        })
+        .catch(() => {
+            document.getElementById('log-output').textContent = 'Failed to fetch logs.';
+        });
+}
+
+fetchLogs();
+logTimer = setInterval(fetchLogs, 5000);
+</script>
+{% endblock %}
