@@ -29,7 +29,16 @@ fi
 # Detect current user (for Docker group)
 ACTUAL_USER="${SUDO_USER:-$USER}"
 
-echo "[1/5] Installing Docker..."
+echo "[1/6] Ensuring hostname discovery works..."
+# Install avahi for .local hostname resolution (mDNS)
+apt-get update -qq
+apt-get install -y -qq avahi-daemon > /dev/null 2>&1 || true
+systemctl enable avahi-daemon > /dev/null 2>&1 || true
+systemctl start avahi-daemon > /dev/null 2>&1 || true
+HOSTNAME=$(hostname)
+echo "  Hostname: $HOSTNAME (reachable as ${HOSTNAME}.local on the network)"
+
+echo "[2/6] Installing Docker..."
 if command -v docker &> /dev/null; then
     echo "  Docker already installed: $(docker --version)"
 else
@@ -37,7 +46,7 @@ else
     echo "  Docker installed successfully."
 fi
 
-echo "[2/5] Configuring Docker..."
+echo "[3/6] Configuring Docker..."
 # Add user to docker group
 usermod -aG docker "$ACTUAL_USER" 2>/dev/null || true
 
@@ -45,7 +54,7 @@ usermod -aG docker "$ACTUAL_USER" 2>/dev/null || true
 systemctl enable docker
 systemctl start docker
 
-echo "[3/5] Setting up RPie-Streamer..."
+echo "[4/6] Setting up RPie-Streamer..."
 INSTALL_DIR="/home/$ACTUAL_USER/rpie-streamer"
 
 if [[ -d "$INSTALL_DIR" ]]; then
@@ -75,11 +84,11 @@ fi
 
 cd "$INSTALL_DIR"
 
-echo "[4/5] Creating data directory..."
+echo "[5/6] Creating data directory..."
 mkdir -p data
 chown -R "$ACTUAL_USER:$ACTUAL_USER" data
 
-echo "[5/5] Starting RPie-Streamer..."
+echo "[6/6] Starting RPie-Streamer..."
 # Build and start containers
 docker compose up -d --build
 
@@ -89,17 +98,26 @@ echo "  Installation Complete!"
 echo "=========================================="
 echo ""
 
-# Get IP address
+# Get IP and hostname
 IP=$(hostname -I | awk '{print $1}')
+HOSTNAME=$(hostname)
 echo "  Open your browser and go to:"
+echo ""
+echo "    http://${HOSTNAME}.local:8080"
+echo ""
+echo "  Or by IP address:"
 echo ""
 echo "    http://$IP:8080"
 echo ""
 echo "  Complete the setup wizard to start streaming."
 echo ""
-echo "  Useful commands:"
+echo "  To find this Pi later, just browse to:"
+echo "    http://${HOSTNAME}.local:8080"
+echo "  This works from any device on the same network."
+echo ""
+echo "  Useful commands (SSH in first: ssh ${ACTUAL_USER}@${HOSTNAME}.local):"
 echo "    View logs:     cd $INSTALL_DIR && docker compose logs -f"
 echo "    Stop:          cd $INSTALL_DIR && docker compose down"
 echo "    Restart:       cd $INSTALL_DIR && docker compose restart"
-echo "    Update:        cd $INSTALL_DIR && docker compose pull && docker compose up -d"
+echo "    Update:        cd $INSTALL_DIR && git pull && docker compose up -d --build"
 echo ""

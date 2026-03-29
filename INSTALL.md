@@ -97,31 +97,28 @@ Wait for the flash to complete (takes a few minutes).
 
 ### Step 2.4: Find the Pi's IP Address
 
-You need the Pi's IP address to connect via SSH. Several ways to find it:
+You don't need to know the Pi's IP address. Raspberry Pi OS broadcasts its hostname on the local network via mDNS, so you can use the `.local` hostname instead.
 
-**Option A: Check your router's admin page**
-- Log into your router (usually `192.168.1.1` or `192.168.0.1`)
-- Look for connected devices — find `rpie-streamer` (or whatever hostname you set)
-- Note the IP address (e.g. `192.168.1.50`)
-
-**Option B: Use a network scanner**
-- On Mac: Open Terminal, run `arp -a | grep -v incomplete`
-- On Windows: Use [Advanced IP Scanner](https://www.advanced-ip-scanner.com/)
-- On any platform: Use the [Fing](https://www.fing.com/) mobile app
-
-**Option C: If you have a monitor connected to the Pi**
-- Log in with your username/password
-- Run `hostname -I` to see the IP address
+If you set the hostname to `rpie-streamer` during OS setup (Step 2.2), the Pi is reachable as **`rpie-streamer.local`** from any device on the same network.
 
 ### Step 2.5: Connect via SSH
 
 From your computer's terminal (Mac/Linux) or PowerShell (Windows):
 
 ```bash
-ssh pi@192.168.1.50
+ssh pi@rpie-streamer.local
 ```
 
-Replace `pi` with your username and `192.168.1.50` with the actual IP.
+Replace `pi` with your username if you chose a different one.
+
+This `.local` address works on Mac, Windows 10/11, and most Linux systems automatically. You'll use it throughout this guide instead of an IP address.
+
+**If `.local` doesn't work** (rare — some older Android devices or corporate networks block mDNS), find the IP by one of these methods:
+- **Router admin page:** Log into your router (usually `192.168.1.1`) → connected devices → find `rpie-streamer`
+- **Fing app:** Free mobile app — connect to same network, scan, find the Pi
+- **Monitor connected to Pi:** Log in and run `hostname -I`
+
+Then use the IP instead: `ssh pi@192.168.1.50`
 
 - Type `yes` when asked about the fingerprint
 - Enter your password
@@ -208,13 +205,13 @@ You should see two containers: `rpie-web` and `rpie-streamer`.
 
 ### Step 4.1: Open the Web UI
 
-On any device connected to the same network, open a browser and go to:
+On any device connected to the same network (phone, laptop, tablet), open a browser and go to:
 
 ```
-http://192.168.1.50:8080
+http://rpie-streamer.local:8080
 ```
 
-(Replace with your Pi's actual IP address.)
+This works from any device on the same network — no need to know the IP address.
 
 ### Step 4.2: Complete the Setup Wizard
 
@@ -300,7 +297,7 @@ Cloudflare provides an embed code for your live stream. On the Live Input page:
 
 ### Check the Dashboard
 
-Go to `http://<pi-ip>:8080` and look at the Dashboard:
+Go to `http://rpie-streamer.local:8080` and look at the Dashboard:
 
 - **Stream Status** should show a green dot and "Streaming"
 - **FPS** should show your camera's framerate (e.g. 30.0)
