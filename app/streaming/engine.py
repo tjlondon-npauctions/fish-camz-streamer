@@ -67,6 +67,7 @@ class StreamEngine:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     text=True,
+                    bufsize=1,
                 )
             except FileNotFoundError:
                 self._last_error = "FFmpeg not found. Is it installed?"

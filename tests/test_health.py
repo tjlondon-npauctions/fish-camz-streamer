@@ -78,3 +78,24 @@ class TestHealthMonitor:
         line2 = line2.replace("time=00:00:50.00", "time=00:01:40.00")
         mon.parse_line(line2)
         assert mon.get_snapshot().frame_count == 3000
+
+    def test_carriage_return_separated(self):
+        """FFmpeg uses \\r to overwrite progress — multiple updates in one line."""
+        mon = HealthMonitor()
+        combined = (
+            "frame=  100 fps=25.0 q=28.0 size=   500kB time=00:00:04.00 bitrate=1024.0kbits/s speed=1.00x\r"
+            "frame=  200 fps=25.0 q=28.0 size=  1000kB time=00:00:08.00 bitrate=1024.0kbits/s speed=1.00x"
+        )
+        mon.parse_line(combined)
+        snap = mon.get_snapshot()
+        assert snap.frame_count == 200
+        assert snap.elapsed_seconds == 8.0
+
+    def test_partial_fields(self):
+        """Parse line with only some fields present."""
+        mon = HealthMonitor()
+        mon.parse_line("frame=  500 fps=30.0 time=00:00:16.67")
+        snap = mon.get_snapshot()
+        assert snap.frame_count == 500
+        assert snap.fps == 30.0
+        assert snap.elapsed_seconds == 16.67

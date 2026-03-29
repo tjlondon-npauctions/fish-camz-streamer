@@ -9,17 +9,14 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# FFmpeg progress line pattern:
-# frame= 1234 fps=30.0 q=28.0 size= 12345kB time=00:01:23.45 bitrate=1234.5kbits/s speed=1.0x
-PROGRESS_RE = re.compile(
-    r"frame=\s*(\d+)\s+"
-    r"fps=\s*([\d.]+)\s+"
-    r".*?"
-    r"bitrate=\s*([\d.]+)kbits/s\s+"
-    r".*?"
-    r"speed=\s*([\d.]+)x"
-)
-
+# Individual field patterns — more robust than one monolithic regex.
+# FFmpeg progress lines look like:
+#   frame= 1234 fps=30.0 q=28.0 size= 12345kB time=00:01:23.45 bitrate=1234.5kbits/s speed=1.0x
+# But formatting varies by version, and \r carriage returns are common.
+FRAME_RE = re.compile(r"frame=\s*(\d+)")
+FPS_RE = re.compile(r"fps=\s*([\d.]+)")
+BITRATE_RE = re.compile(r"bitrate=\s*([\d.]+)kbits/s")
+SPEED_RE = re.compile(r"speed=\s*([\d.]+)x")
 TIME_RE = re.compile(r"time=(\d+):(\d+):([\d.]+)")
 
 
@@ -45,20 +42,39 @@ class HealthMonitor:
         self._latest = HealthSnapshot()
 
     def parse_line(self, line: str) -> None:
-        """Parse a single line of FFmpeg stderr output."""
-        match = PROGRESS_RE.search(line)
-        if not match:
-            return
+        """Parse a single line of FFmpeg stderr output.
+
+        Handles both single-line progress format and carriage-return
+        overwritten lines. Extracts whatever fields are present.
+        """
+        # Split on \r in case multiple progress updates are in one line
+        for segment in line.split("\r"):
+            segment = segment.strip()
+            if not segment:
+                continue
+            self._parse_segment(segment)
+
+    def _parse_segment(self, text: str) -> None:
+        """Parse a single progress segment."""
+        frame_match = FRAME_RE.search(text)
+        if not frame_match:
+            return  # Not a progress line
 
         now = time.time()
-        frame_count = int(match.group(1))
-        fps = float(match.group(2))
-        bitrate = float(match.group(3))
-        speed = float(match.group(4))
+        frame_count = int(frame_match.group(1))
+
+        fps_match = FPS_RE.search(text)
+        fps = float(fps_match.group(1)) if fps_match else self._latest.fps
+
+        bitrate_match = BITRATE_RE.search(text)
+        bitrate = float(bitrate_match.group(1)) if bitrate_match else self._latest.bitrate_kbps
+
+        speed_match = SPEED_RE.search(text)
+        speed = float(speed_match.group(1)) if speed_match else self._latest.speed
 
         # Parse elapsed time
-        elapsed = 0.0
-        time_match = TIME_RE.search(line)
+        elapsed = self._latest.elapsed_seconds
+        time_match = TIME_RE.search(text)
         if time_match:
             h, m, s = time_match.groups()
             elapsed = int(h) * 3600 + int(m) * 60 + float(s)
@@ -69,7 +85,7 @@ class HealthMonitor:
             self._last_frame_time = now
 
         is_stalled = (now - self._last_frame_time) > self.stall_timeout
-        is_slow = speed < 0.9 and speed > 0
+        is_slow = 0 < speed < 0.9
 
         if is_stalled:
             logger.warning("Stream stalled: no new frames for %.0fs", now - self._last_frame_time)
