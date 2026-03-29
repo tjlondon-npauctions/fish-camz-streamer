@@ -76,6 +76,7 @@ The setup wizard will walk you through:
 
 | Brand     | Typical RTSP URL                                     |
 |-----------|------------------------------------------------------|
+| Uniview   | `rtsp://<ip>:554/unicast/c1/s0/live`                 |
 | Hikvision | `rtsp://<ip>:554/Streaming/Channels/101`             |
 | Dahua     | `rtsp://<ip>:554/cam/realmonitor?channel=1&subtype=0`|
 | Reolink   | `rtsp://<ip>:554/1`                                  |

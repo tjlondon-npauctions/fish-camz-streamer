@@ -3,8 +3,7 @@ services:
     build: .
     container_name: rpie-web
     command: python -m app.webapp
-    ports:
-      - "${WEB_PORT:-8080}:8080"
+    network_mode: host
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro

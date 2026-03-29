@@ -147,7 +147,9 @@ def get_common_rtsp_urls(ip: str, username: str = "", password: str = "") -> lis
     base = f"rtsp://{auth}{ip}"
 
     return [
-        f"{base}:554/stream1",           # Generic
+        f"{base}:554/unicast/c1/s0/live", # Uniview main stream
+        f"{base}:554/unicast/c1/s1/live", # Uniview sub stream
+        f"{base}:554/stream1",            # Generic
         f"{base}:554/cam/realmonitor?channel=1&subtype=0",  # Dahua
         f"{base}:554/Streaming/Channels/101",  # Hikvision main
         f"{base}:554/Streaming/Channels/102",  # Hikvision sub

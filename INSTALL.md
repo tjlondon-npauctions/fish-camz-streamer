@@ -233,6 +233,8 @@ This works from any device on the same network — no need to know the IP addres
 
 | Brand | URL Pattern |
 |-------|-------------|
+| **Uniview** | **`rtsp://192.168.1.x:554/unicast/c1/s0/live`** |
+| Uniview (sub) | `rtsp://192.168.1.x:554/unicast/c1/s1/live` |
 | Hikvision | `rtsp://192.168.1.x:554/Streaming/Channels/101` |
 | Dahua | `rtsp://192.168.1.x:554/cam/realmonitor?channel=1&subtype=0` |
 | Reolink | `rtsp://192.168.1.x:554/1` |
