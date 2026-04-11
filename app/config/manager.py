@@ -15,15 +15,9 @@ DATA_DIR = BASE_DIR / "data"
 CONFIG_FILE = DATA_DIR / "config.yaml"
 CONFIG_BACKUP = DATA_DIR / "config.yaml.bak"
 
-REQUIRED_FOR_RTMP = [
+REQUIRED_FOR_STREAMING = [
     ("camera", "rtsp_url"),
     ("cloudflare", "stream_key"),
-]
-
-REQUIRED_FOR_HLS = [
-    ("camera", "rtsp_url"),
-    ("bunny", "storage_zone"),
-    ("bunny", "api_key"),
 ]
 
 
@@ -167,9 +161,7 @@ def is_setup_complete(config: dict) -> bool:
 
 def is_streaming_ready(config: dict) -> bool:
     """Check if all required fields for streaming are configured."""
-    output_mode = get(config, "output", "mode", "rtmp")
-    required = REQUIRED_FOR_HLS if output_mode == "hls" else REQUIRED_FOR_RTMP
-    for section, key in required:
+    for section, key in REQUIRED_FOR_STREAMING:
         if not get(config, section, key):
             return False
     return True

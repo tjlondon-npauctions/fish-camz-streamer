@@ -70,4 +70,4 @@ volumes:
     driver_opts:
       type: tmpfs
       device: tmpfs
-      o: "size=200m"
+      o: "size=50m"

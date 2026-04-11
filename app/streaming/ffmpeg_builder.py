@@ -37,11 +37,7 @@ def build_command(config: dict, probe: Optional[StreamInfo] = None) -> list[str]
     cmd += _encoding_args(enc, probe)
 
     # Output
-    output_mode = config.get("output", {}).get("mode", "rtmp")
-    if output_mode == "hls":
-        cmd += _hls_output_args(config)
-    else:
-        cmd += ["-f", "flv", rtmps_url]
+    cmd += ["-f", "flv", rtmps_url]
 
     return cmd
 
@@ -101,23 +97,6 @@ def _encoding_args(enc: dict, probe: Optional[StreamInfo]) -> list[str]:
         return _copy_args(enc, probe)
 
     return _transcode_args(enc, probe)
-
-
-def _hls_output_args(config: dict) -> list[str]:
-    """Build HLS output arguments for local segment writing."""
-    hls = config.get("hls", {})
-    segment_duration = hls.get("segment_duration", 6)
-    playlist_size = hls.get("playlist_size", 5)
-    segment_dir = hls.get("segment_dir", "/run/rpie/hls")
-
-    return [
-        "-f", "hls",
-        "-hls_time", str(segment_duration),
-        "-hls_list_size", str(playlist_size),
-        "-hls_flags", "delete_segments+append_list",
-        "-hls_segment_filename", f"{segment_dir}/seg_%05d.ts",
-        f"{segment_dir}/live.m3u8",
-    ]
 
 
 def _copy_args(enc: dict, probe: Optional[StreamInfo]) -> list[str]:

@@ -69,12 +69,6 @@ class StreamEngine:
 
             self._stop_event.clear()
 
-            # Ensure HLS segment directory exists if in HLS mode
-            output_mode = self.config.get("output", {}).get("mode", "rtmp")
-            if output_mode == "hls":
-                hls_dir = self.config.get("hls", {}).get("segment_dir", "/run/rpie/hls")
-                Path(hls_dir).mkdir(parents=True, exist_ok=True)
-
             # Probe camera to determine codec strategy
             probe = self._probe_camera()
 

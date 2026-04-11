@@ -25,7 +25,7 @@
                    placeholder="rtsp://192.168.1.100:554/unicast/c1/s0/live">
             <button type="button" class="outline" onclick="scanCameras()">Scan Network</button>
         </div>
-        <p><small>If you have an NVR, click "Scan Network" to find it, then "Find Channels" to see all connected cameras. NVR cameras use the NVR's IP, not the camera's own IP.</small></p>
+        <p><small>If you have an NVR, use the NVR's IP (not the camera). Uniview NVR: <code>rtsp://IP:554/unicast/c1/s0/live</code> where c1 = channel 1.</small></p>
         <div id="scan-results" class="hidden"></div>
 
         <div class="grid">
@@ -52,19 +52,8 @@
         <div id="probe-results" class="hidden"></div>
     </article>
 
-    <!-- Output Mode -->
+    <!-- Cloudflare Settings -->
     <article>
-        <header><strong>Output</strong></header>
-
-        <label for="output_mode">Streaming Mode</label>
-        <select id="output_mode" name="output_mode" onchange="toggleOutputFields()">
-            <option value="rtmp" {% if config.output.mode == 'rtmp' %}selected{% endif %}>RTMP (Cloudflare Stream)</option>
-            <option value="hls" {% if config.output.mode == 'hls' %}selected{% endif %}>HLS (Bunny CDN)</option>
-        </select>
-    </article>
-
-    <!-- Cloudflare Settings (RTMP mode) -->
-    <article id="rtmp-settings" class="{% if config.output.mode == 'hls' %}hidden{% endif %}">
         <header><strong>Cloudflare Stream</strong></header>
 
         <label for="rtmps_url">RTMPS Endpoint</label>
@@ -75,40 +64,6 @@
         <label for="stream_key">Stream Key</label>
         <input type="password" id="stream_key" name="stream_key"
                placeholder="{{ '••••••••' if config.cloudflare.stream_key else 'Your Cloudflare stream key' }}">
-    </article>
-
-    <!-- Bunny CDN Settings (HLS mode) -->
-    <article id="hls-settings" class="{% if config.output.mode != 'hls' %}hidden{% endif %}">
-        <header><strong>Bunny CDN</strong></header>
-
-        <div class="grid">
-            <div>
-                <label for="bunny_storage_zone">Storage Zone</label>
-                <input type="text" id="bunny_storage_zone" name="bunny_storage_zone"
-                       value="{{ config.bunny.storage_zone or '' }}"
-                       placeholder="e.g. fish-camz">
-            </div>
-            <div>
-                <label for="bunny_region">Region</label>
-                <input type="text" id="bunny_region" name="bunny_region"
-                       value="{{ config.bunny.region or '' }}"
-                       placeholder="e.g. la, ny, sg (empty=default)">
-            </div>
-        </div>
-
-        <label for="bunny_api_key">Storage API Key</label>
-        <input type="password" id="bunny_api_key" name="bunny_api_key"
-               placeholder="{{ '••••••••' if config.bunny.api_key else 'From Bunny dashboard > Storage > API' }}">
-
-        <label for="bunny_cdn_url">CDN URL (Pull Zone)</label>
-        <input type="text" id="bunny_cdn_url" name="bunny_cdn_url"
-               value="{{ config.bunny.cdn_url or '' }}"
-               placeholder="https://fish-camz.b-cdn.net">
-
-        <label for="bunny_stream_path">Stream Path</label>
-        <input type="text" id="bunny_stream_path" name="bunny_stream_path"
-               value="{{ config.bunny.stream_path or 'live' }}"
-               placeholder="live">
     </article>
 
     <!-- Encoding Settings -->
@@ -188,12 +143,6 @@
 
 {% block scripts %}
 <script>
-function toggleOutputFields() {
-    var mode = document.getElementById('output_mode').value;
-    document.getElementById('rtmp-settings').className = mode === 'rtmp' ? '' : 'hidden';
-    document.getElementById('hls-settings').className = mode === 'hls' ? '' : 'hidden';
-}
-
 function setText(el, text) {
     while (el.firstChild) el.removeChild(el.firstChild);
     var p = document.createElement('p');
@@ -202,76 +151,29 @@ function setText(el, text) {
 }
 
 function scanCameras() {
-    var div = document.getElementById('scan-results');
+    const div = document.getElementById('scan-results');
     div.className = '';
     div.innerHTML = '<p aria-busy="true">Scanning network for cameras...</p>';
 
     fetch('/api/cameras/scan')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
+        .then(r => r.json())
+        .then(data => {
             div.innerHTML = '';
             if (data.cameras && data.cameras.length > 0) {
                 var heading = document.createElement('p');
-                heading.textContent = 'Found ' + data.cameras.length + ' device(s):';
+                heading.textContent = 'Found ' + data.cameras.length + ' camera(s):';
                 div.appendChild(heading);
                 var ul = document.createElement('ul');
                 data.cameras.forEach(function(cam) {
                     var li = document.createElement('li');
-                    var isNvr = cam.device_type === 'nvr';
-
-                    var label = document.createElement('strong');
-                    label.textContent = cam.name + ' (' + cam.ip + ')';
-                    li.appendChild(label);
-
-                    if (isNvr) {
-                        var badge = document.createElement('small');
-                        badge.textContent = ' NVR';
-                        badge.style.cssText = 'background:#e67e22;color:#fff;padding:1px 6px;border-radius:4px;margin-left:6px;font-size:0.75em';
-                        li.appendChild(badge);
-                    }
-                    if (cam.hardware) {
-                        var hw = document.createElement('small');
-                        hw.textContent = ' ' + cam.hardware;
-                        hw.style.opacity = '0.6';
-                        li.appendChild(hw);
-                    }
-
-                    var actions = document.createElement('div');
-                    actions.style.marginTop = '4px';
-
-                    if (isNvr) {
-                        var findBtn = document.createElement('button');
-                        findBtn.type = 'button';
-                        findBtn.className = 'outline';
-                        findBtn.textContent = 'Find Channels';
-                        findBtn.style.cssText = 'padding:4px 12px;font-size:0.85em;margin-right:8px';
-                        findBtn.addEventListener('click', (function(c) {
-                            return function(e) {
-                                e.preventDefault();
-                                detectChannels(c);
-                            };
-                        })(cam));
-                        actions.appendChild(findBtn);
-                    }
-
-                    var useBtn = document.createElement('a');
-                    useBtn.href = '#';
-                    useBtn.textContent = isNvr ? 'Use raw address' : 'Use this camera';
-                    useBtn.style.fontSize = '0.85em';
-                    useBtn.addEventListener('click', (function(c) {
-                        return function(e) {
-                            e.preventDefault();
-                            document.getElementById('rtsp_url').value = c.xaddrs;
-                        };
-                    })(cam));
-                    actions.appendChild(useBtn);
-
-                    li.appendChild(actions);
-
-                    var chDiv = document.createElement('div');
-                    chDiv.id = 'channels-' + cam.ip.replace(/\./g, '-');
-                    li.appendChild(chDiv);
-
+                    var a = document.createElement('a');
+                    a.href = '#';
+                    a.textContent = cam.name + ' (' + cam.ip + ')';
+                    a.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        document.getElementById('rtsp_url').value = cam.xaddrs;
+                    });
+                    li.appendChild(a);
                     ul.appendChild(li);
                 });
                 div.appendChild(ul);
@@ -284,89 +186,17 @@ function scanCameras() {
         });
 }
 
-function detectChannels(cam) {
-    var divId = 'channels-' + cam.ip.replace(/\./g, '-');
-    var div = document.getElementById(divId);
-    div.innerHTML = '<p aria-busy="true">Probing channels (this may take a moment)...</p>';
-
-    var username = document.getElementById('cam_username').value || '';
-    var password = document.getElementById('cam_password').value || '';
-
-    fetch('/api/camera/detect-channels', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            ip: cam.ip,
-            username: username,
-            password: password,
-            hardware: cam.hardware || '',
-            name: cam.name || '',
-            scopes: cam.scopes || ''
-        })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        div.innerHTML = '';
-        if (data.channels && data.channels.length > 0) {
-            if (data.brand) {
-                var brandP = document.createElement('p');
-                brandP.innerHTML = '<small>Detected brand: <strong>' + data.brand + '</strong></small>';
-                div.appendChild(brandP);
-            }
-            var table = document.createElement('table');
-            table.style.fontSize = '0.85em';
-            var thead = document.createElement('thead');
-            thead.innerHTML = '<tr><th>Ch</th><th>Quality</th><th>Resolution</th><th>Codec</th><th></th></tr>';
-            table.appendChild(thead);
-            var tbody = document.createElement('tbody');
-            data.channels.forEach(function(ch) {
-                var tr = document.createElement('tr');
-                var tdCh = document.createElement('td');
-                tdCh.textContent = ch.channel;
-                var tdQ = document.createElement('td');
-                tdQ.textContent = ch.quality === 'main' ? 'Main' : 'Sub';
-                var tdRes = document.createElement('td');
-                tdRes.textContent = ch.resolution + ' @ ' + ch.framerate + 'fps';
-                var tdCodec = document.createElement('td');
-                tdCodec.textContent = ch.video_codec + (ch.can_copy ? '' : ' (transcode)');
-                var tdBtn = document.createElement('td');
-                var btn = document.createElement('a');
-                btn.href = '#';
-                btn.textContent = 'Select';
-                btn.addEventListener('click', (function(url) {
-                    return function(e) {
-                        e.preventDefault();
-                        document.getElementById('rtsp_url').value = url;
-                    };
-                })(ch.url));
-                tdBtn.appendChild(btn);
-                tr.appendChild(tdCh);
-                tr.appendChild(tdQ);
-                tr.appendChild(tdRes);
-                tr.appendChild(tdCodec);
-                tr.appendChild(tdBtn);
-                tbody.appendChild(tr);
-            });
-            table.appendChild(tbody);
-            div.appendChild(table);
-        } else {
-            setText(div, 'No active channels found. Try entering credentials above, or enter the RTSP URL manually.');
-        }
-    })
-    .catch(function() { setText(div, 'Channel detection failed.'); });
-}
-
 function probeCamera() {
-    var url = document.getElementById('rtsp_url').value;
+    const url = document.getElementById('rtsp_url').value;
     if (!url) { alert('Enter an RTSP URL first.'); return; }
 
-    var div = document.getElementById('probe-results');
+    const div = document.getElementById('probe-results');
     div.className = '';
     div.innerHTML = '<p aria-busy="true">Testing camera connection...</p>';
 
     fetch('/api/camera/probe?url=' + encodeURIComponent(url))
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
+        .then(r => r.json())
+        .then(data => {
             if (data.error) {
                 setText(div, 'Failed: ' + data.error);
             } else {

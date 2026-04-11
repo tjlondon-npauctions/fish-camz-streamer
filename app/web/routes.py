@@ -17,11 +17,10 @@ routes = Blueprint("routes", __name__)
 @routes.before_request
 def check_auth():
     """Check authentication before every page request."""
-    # Allow static files, API, and player without this check
+    # Allow static files and API without this check
     if request.endpoint and (
         request.endpoint.startswith("api.") or
-        request.endpoint == "static" or
-        request.endpoint == "routes.player"
+        request.endpoint == "static"
     ):
         return
 
@@ -61,9 +60,6 @@ def settings():
             manager.set_value(config, "camera", "password", cam_password)
         manager.set_value(config, "camera", "transport", request.form.get("transport", "tcp"))
 
-        # Update output mode
-        manager.set_value(config, "output", "mode", request.form.get("output_mode", "rtmp"))
-
         # Update Cloudflare settings
         stream_key = request.form.get("stream_key", "").strip()
         if stream_key:  # Only overwrite if a new value was entered
@@ -71,21 +67,6 @@ def settings():
         rtmps_url = request.form.get("rtmps_url", "").strip()
         if rtmps_url:
             manager.set_value(config, "cloudflare", "rtmps_url", rtmps_url)
-
-        # Update Bunny CDN settings
-        bunny_zone = request.form.get("bunny_storage_zone", "").strip()
-        if bunny_zone:
-            manager.set_value(config, "bunny", "storage_zone", bunny_zone)
-        bunny_key = request.form.get("bunny_api_key", "").strip()
-        if bunny_key:
-            manager.set_value(config, "bunny", "api_key", bunny_key)
-        manager.set_value(config, "bunny", "region", request.form.get("bunny_region", "").strip())
-        bunny_cdn = request.form.get("bunny_cdn_url", "").strip()
-        if bunny_cdn:
-            manager.set_value(config, "bunny", "cdn_url", bunny_cdn)
-        bunny_path = request.form.get("bunny_stream_path", "").strip()
-        if bunny_path:
-            manager.set_value(config, "bunny", "stream_path", bunny_path)
 
         # Update encoding settings
         manager.set_value(config, "encoding", "mode", request.form.get("encoding_mode", "auto"))
@@ -149,20 +130,6 @@ def logs():
 def help_page():
     config = manager.load()
     return render_template("help.html", config=config)
-
-
-@routes.route("/player")
-def player():
-    config = manager.load()
-    vessel_name = manager.get(config, "vessel", "name", "")
-    output_mode = manager.get(config, "output", "mode", "rtmp")
-    playlist_url = ""
-    if output_mode == "hls":
-        cdn_url = manager.get(config, "bunny", "cdn_url", "").rstrip("/")
-        stream_path = manager.get(config, "bunny", "stream_path", "live")
-        if cdn_url:
-            playlist_url = f"{cdn_url}/{stream_path}/live.m3u8"
-    return render_template("player.html", vessel_name=vessel_name, playlist_url=playlist_url)
 
 
 @routes.route("/login", methods=["GET", "POST"])
@@ -229,24 +196,11 @@ def setup():
             return render_template("setup.html", step=3, config=config)
 
         elif step == "3":
-            # Output setup
-            output_mode = request.form.get("output_mode", "rtmp")
-            manager.set_value(config, "output", "mode", output_mode)
-
-            if output_mode == "hls":
-                manager.set_value(config, "bunny", "storage_zone", request.form.get("bunny_storage_zone", "").strip())
-                bunny_key = request.form.get("bunny_api_key", "").strip()
-                if bunny_key:
-                    manager.set_value(config, "bunny", "api_key", bunny_key)
-                bunny_cdn = request.form.get("bunny_cdn_url", "").strip()
-                if bunny_cdn:
-                    manager.set_value(config, "bunny", "cdn_url", bunny_cdn)
-            else:
-                manager.set_value(config, "cloudflare", "stream_key", request.form.get("stream_key", "").strip())
-                rtmps_url = request.form.get("rtmps_url", "").strip()
-                if rtmps_url:
-                    manager.set_value(config, "cloudflare", "rtmps_url", rtmps_url)
-
+            # Cloudflare setup
+            manager.set_value(config, "cloudflare", "stream_key", request.form.get("stream_key", "").strip())
+            rtmps_url = request.form.get("rtmps_url", "").strip()
+            if rtmps_url:
+                manager.set_value(config, "cloudflare", "rtmps_url", rtmps_url)
             manager.save(config)
             return render_template("setup.html", step=4, config=config)
 
