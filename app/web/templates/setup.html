@@ -286,19 +286,17 @@
         <!-- Step 3: Output -->
         <article>
             <header><strong>Streaming Output</strong></header>
-            {% set output_mode = config.get('output', {}).get('mode', 'rtmp') %}
-            {% set bunny = config.get('bunny', {}) %}
             <form method="post">
                 <input type="hidden" name="step" value="3">
 
                 <label for="output_mode">Output Mode</label>
                 <select id="output_mode" name="output_mode" onchange="toggleSetupOutput()">
-                    <option value="rtmp" {% if output_mode == 'rtmp' %}selected{% endif %}>RTMP (Cloudflare Stream)</option>
-                    <option value="hls" {% if output_mode == 'hls' %}selected{% endif %}>HLS (Bunny CDN)</option>
+                    <option value="rtmp" {% if config.output.mode == 'rtmp' %}selected{% endif %}>RTMP (Cloudflare Stream)</option>
+                    <option value="hls" {% if config.output.mode == 'hls' %}selected{% endif %}>HLS (Bunny CDN)</option>
                 </select>
 
                 <!-- RTMP fields -->
-                <div id="setup-rtmp" class="{% if output_mode == 'hls' %}hidden{% endif %}">
+                <div id="setup-rtmp" class="{% if config.output.mode == 'hls' %}hidden{% endif %}">
                     <label for="rtmps_url">RTMPS Endpoint</label>
                     <input type="text" id="rtmps_url" name="rtmps_url"
                            value="{{ config.cloudflare.rtmps_url or 'rtmps://live.cloudflare.com:443/live/' }}"
@@ -311,20 +309,20 @@
                 </div>
 
                 <!-- HLS/Bunny fields -->
-                <div id="setup-hls" class="{% if output_mode != 'hls' %}hidden{% endif %}">
+                <div id="setup-hls" class="{% if config.output.mode != 'hls' %}hidden{% endif %}">
                     <label for="bunny_storage_zone">Bunny Storage Zone</label>
                     <input type="text" id="bunny_storage_zone" name="bunny_storage_zone"
-                           value="{{ bunny.get('storage_zone', '') }}"
+                           value="{{ config.bunny.storage_zone or '' }}"
                            placeholder="e.g. fish-camz">
 
                     <label for="bunny_api_key">Storage API Key</label>
                     <input type="text" id="bunny_api_key" name="bunny_api_key"
-                           value="{{ bunny.get('api_key', '') }}"
+                           value="{{ config.bunny.api_key or '' }}"
                            placeholder="From Bunny dashboard > Storage > API">
 
                     <label for="bunny_cdn_url">CDN URL (Pull Zone)</label>
                     <input type="text" id="bunny_cdn_url" name="bunny_cdn_url"
-                           value="{{ bunny.get('cdn_url', '') }}"
+                           value="{{ config.bunny.cdn_url or '' }}"
                            placeholder="https://fish-camz.b-cdn.net">
                 </div>
 
@@ -349,10 +347,10 @@
                 <dt>Camera</dt>
                 <dd>{{ config.camera.rtsp_url or 'Not set' }}</dd>
                 <dt>Output Mode</dt>
-                <dd>{{ 'HLS (Bunny CDN)' if config.get('output', {}).get('mode') == 'hls' else 'RTMP (Cloudflare Stream)' }}</dd>
-                {% if config.get('output', {}).get('mode') == 'hls' %}
+                <dd>{{ 'HLS (Bunny CDN)' if config.output.mode == 'hls' else 'RTMP (Cloudflare Stream)' }}</dd>
+                {% if config.output.mode == 'hls' %}
                 <dt>Bunny Storage Zone</dt>
-                <dd>{{ config.get('bunny', {}).get('storage_zone', 'Not set') }}</dd>
+                <dd>{{ config.bunny.storage_zone or 'Not set' }}</dd>
                 {% else %}
                 <dt>Cloudflare Key</dt>
                 <dd>{{ config.cloudflare.stream_key[:8] }}... (hidden)</dd>
