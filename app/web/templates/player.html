@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ vessel_name or 'Fish Camz' }} - Live</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        body { margin: 0; }
+        .player-container { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+        video { width: 100%; border-radius: 8px; background: #000; }
+        .status { font-size: 0.85em; opacity: 0.7; margin-top: 0.5rem; }
+        .embed-code { font-size: 0.8em; }
+        .embed-code textarea { font-family: monospace; font-size: 0.85em; resize: vertical; }
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <h3>{{ vessel_name or 'Live Stream' }}</h3>
+
+        {% if playlist_url %}
+        <video id="video" controls autoplay muted playsinline></video>
+        <p class="status" id="player-status">Connecting...</p>
+
+        <details class="embed-code" style="margin-top: 1.5rem;">
+            <summary>Embed this stream on your website</summary>
+            <p>Copy this code into your HTML:</p>
+            <textarea rows="4" readonly onclick="this.select()"><iframe src="{{ request.url }}" width="960" height="600" frameborder="0" allowfullscreen allow="autoplay"></iframe></textarea>
+            <p>Or use the HLS URL directly with any compatible player:</p>
+            <textarea rows="1" readonly onclick="this.select()">{{ playlist_url }}</textarea>
+        </details>
+
+        <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+        <script>
+        (function() {
+            var video = document.getElementById('video');
+            var status = document.getElementById('player-status');
+            var url = '{{ playlist_url }}';
+
+            if (Hls.isSupported()) {
+                var hls = new Hls({
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 6,
+                    enableWorker: true,
+                });
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    status.textContent = 'Live';
+                    video.play().catch(function() {});
+                });
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    if (data.fatal) {
+                        status.textContent = 'Stream offline - retrying...';
+                        setTimeout(function() {
+                            hls.loadSource(url);
+                        }, 5000);
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                video.addEventListener('loadedmetadata', function() {
+                    status.textContent = 'Live';
+                    video.play().catch(function() {});
+                });
+            } else {
+                status.textContent = 'HLS playback not supported in this browser.';
+            }
+        })();
+        </script>
+
+        {% else %}
+        <article>
+            <p>HLS streaming is not configured. Set the output mode to HLS and configure Bunny CDN in
+            <a href="{{ url_for('routes.settings') }}">Settings</a>.</p>
+        </article>
+        {% endif %}
+    </div>
+</body>
+</html>

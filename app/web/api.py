@@ -9,7 +9,12 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from app.camera.discovery import discover_cameras, get_common_rtsp_urls
+from app.camera.discovery import (
+    discover_cameras,
+    detect_brand,
+    get_channel_urls,
+    get_common_rtsp_urls,
+)
 from app.camera.probe import probe_stream
 from app.config import manager
 from app.system.stats import get_system_stats
@@ -85,6 +90,21 @@ def network_status():
             "latency_ms": 0,
             "last_check": 0,
             "in_extended_outage": False,
+        })
+    return jsonify(state)
+
+
+@api.route("/uploader")
+def uploader_status():
+    """HLS uploader status (read from shared tmpfs)."""
+    state = _read_state_file("uploader.json")
+    if not state:
+        return jsonify({
+            "running": False,
+            "upload_count": 0,
+            "error_count": 0,
+            "last_error": "",
+            "segments_tracked": 0,
         })
     return jsonify(state)
 
@@ -170,6 +190,83 @@ def common_urls():
 
     urls = get_common_rtsp_urls(ip, username, password)
     return jsonify({"urls": urls})
+
+
+@api.route("/camera/detect-channels", methods=["POST"])
+def detect_channels():
+    """Probe an NVR/camera to find active channels and their stream info.
+
+    Accepts JSON body: {ip, username?, password?, hardware?, name?, scopes?}
+    Returns: {brand, channels: [{channel, quality, url, video_codec, resolution, ...}]}
+    """
+    data = request.get_json(silent=True) or {}
+    ip = data.get("ip", "").strip()
+    if not ip:
+        return jsonify({"error": "Missing 'ip' field"}), 400
+
+    username = data.get("username", "")
+    password = data.get("password", "")
+    hardware = data.get("hardware", "")
+    name = data.get("name", "")
+    scopes = data.get("scopes", "")
+
+    brand = detect_brand(hardware, name, scopes)
+    candidates = get_channel_urls(ip, brand, username, password)
+
+    active_channels = []
+    detected_brand = brand
+
+    for candidate in candidates:
+        try:
+            info = probe_stream(candidate["url"], timeout=5)
+            active_channels.append({
+                "channel": candidate["channel"],
+                "quality": candidate["quality"],
+                "url": candidate["url"],
+                "brand": candidate["brand"],
+                "video_codec": info.video_codec,
+                "audio_codec": info.audio_codec,
+                "resolution": info.resolution,
+                "framerate": info.framerate,
+                "can_copy": info.can_copy,
+            })
+            # If we were guessing brands, lock in the one that worked
+            if not detected_brand:
+                detected_brand = candidate["brand"]
+        except RuntimeError:
+            continue
+
+    # If we detected a brand from probing and didn't know it before,
+    # now probe all channels for that brand
+    if detected_brand and not brand and active_channels:
+        remaining = get_channel_urls(ip, detected_brand, username, password)
+        seen_urls = {ch["url"] for ch in active_channels}
+        for candidate in remaining:
+            if candidate["url"] in seen_urls:
+                continue
+            try:
+                info = probe_stream(candidate["url"], timeout=5)
+                active_channels.append({
+                    "channel": candidate["channel"],
+                    "quality": candidate["quality"],
+                    "url": candidate["url"],
+                    "brand": candidate["brand"],
+                    "video_codec": info.video_codec,
+                    "audio_codec": info.audio_codec,
+                    "resolution": info.resolution,
+                    "framerate": info.framerate,
+                    "can_copy": info.can_copy,
+                })
+            except RuntimeError:
+                continue
+
+    # Sort: main streams first, then by channel number
+    active_channels.sort(key=lambda c: (c["channel"], c["quality"] != "main"))
+
+    return jsonify({
+        "brand": detected_brand,
+        "channels": active_channels,
+    })
 
 
 def _redact_log_lines(lines):
