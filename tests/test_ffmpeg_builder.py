@@ -55,11 +55,21 @@ def _h264_no_audio_probe():
     )
 
 
+def _h264_pcm_probe():
+    return StreamInfo(
+        video_codec="h264", audio_codec="pcm_mulaw",
+        width=1920, height=1080, framerate=30.0,
+        is_h264=True, is_aac=False, can_copy=True,
+    )
+
+
 class TestAutoMode:
     def test_copies_when_h264_aac(self):
         cmd = build_command(_base_config(), _h264_aac_probe())
-        assert "-c" in cmd
-        assert cmd[cmd.index("-c") + 1] == "copy"
+        assert "-c:v" in cmd
+        assert cmd[cmd.index("-c:v") + 1] == "copy"
+        assert "-c:a" in cmd
+        assert cmd[cmd.index("-c:a") + 1] == "copy"
         assert "libx264" not in cmd
 
     def test_transcodes_when_h265(self):
@@ -82,6 +92,15 @@ class TestCopyMode:
         config = _base_config(encoding={"mode": "copy"})
         cmd = build_command(config, _h264_no_audio_probe())
         assert "-an" in cmd
+
+    def test_copy_video_transcode_pcm_audio(self):
+        """H.264 video should be copied, pcm_mulaw audio transcoded to AAC."""
+        cmd = build_command(_base_config(), _h264_pcm_probe())
+        assert "-c:v" in cmd
+        assert cmd[cmd.index("-c:v") + 1] == "copy"
+        assert "-c:a" in cmd
+        assert cmd[cmd.index("-c:a") + 1] == "aac"
+        assert "libx264" not in cmd
 
 
 class TestTranscodeMode:

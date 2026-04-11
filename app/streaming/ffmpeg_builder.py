@@ -76,8 +76,8 @@ def _input_args(cam: dict, rtsp_url: str) -> list[str]:
     if rtsp_url.startswith("rtsp://"):
         # RTSP-specific options (reconnect flags are NOT valid for RTSP)
         args += ["-rtsp_transport", transport]
-        # Timeout for RTSP connection (microseconds)
-        args += ["-timeout", "10000000"]
+        # Timeout for RTSP connection (microseconds) — 30s to tolerate Starlink blips
+        args += ["-timeout", "30000000"]
     else:
         # HTTP/RTMP reconnect options (only valid for these protocols)
         args += ["-reconnect", "1"]
@@ -94,18 +94,27 @@ def _encoding_args(enc: dict, probe: Optional[StreamInfo]) -> list[str]:
     mode = enc.get("mode", "auto")
 
     if mode == "copy" or (mode == "auto" and probe and probe.can_copy):
-        return _copy_args(probe)
+        return _copy_args(enc, probe)
 
     return _transcode_args(enc, probe)
 
 
-def _copy_args(probe: Optional[StreamInfo]) -> list[str]:
-    """Arguments for codec copy (passthrough)."""
-    args = ["-c", "copy"]
+def _copy_args(enc: dict, probe: Optional[StreamInfo]) -> list[str]:
+    """Arguments for video copy (passthrough) with appropriate audio handling."""
+    args = ["-c:v", "copy"]
 
-    # If no audio stream detected, don't try to copy audio
     if probe and not probe.audio_codec:
-        args = ["-c:v", "copy", "-an"]
+        # No audio stream — disable audio
+        args += ["-an"]
+    elif probe and probe.is_aac:
+        # AAC audio — copy it through
+        args += ["-c:a", "copy"]
+    elif probe and probe.audio_codec:
+        # Non-AAC audio (e.g. pcm_mulaw) — transcode to AAC
+        args += ["-c:a", "aac", "-b:a", enc.get("audio_bitrate", "128k")]
+    else:
+        # No probe info — drop audio to be safe
+        args += ["-an"]
 
     return args
 

@@ -101,9 +101,11 @@ class NetworkMonitor:
                 self._latency_ms = self._parse_ping_latency(result.stdout)
 
                 if not was_connected:
+                    was_extended = self.in_extended_outage
                     logger.info("Network recovered (latency: %.1fms)", self._latency_ms)
                     self._outage_start = None
-                    if self._on_recovery_callback:
+                    if was_extended and self._on_recovery_callback:
+                        logger.info("Extended outage ended, restarting stream")
                         self._on_recovery_callback()
             else:
                 self._mark_disconnected()

@@ -102,7 +102,7 @@ def probe_stream(url: str, timeout: int = 10) -> StreamInfo:
             if bit_rate:
                 info.audio_bitrate = int(bit_rate)
 
-    # Can copy if video is H.264 and audio is AAC (or no audio)
-    info.can_copy = info.is_h264 and (info.is_aac or not info.audio_codec)
+    # Can copy video if it's H.264 (audio handled separately)
+    info.can_copy = info.is_h264
 
     return info

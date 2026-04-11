@@ -35,7 +35,7 @@ class TestSingleLineFormat:
         assert snap.frame_count == 0
 
     def test_detects_slow_speed(self):
-        mon = HealthMonitor()
+        mon = HealthMonitor(slow_grace_period=0)
         mon.parse_line(SLOW_LINE)
         snap = mon.get_snapshot()
         assert snap.is_slow is True

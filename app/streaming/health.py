@@ -37,10 +37,12 @@ class HealthSnapshot:
 class HealthMonitor:
     """Monitors FFmpeg stream health by parsing stderr/progress output."""
 
-    def __init__(self, stall_timeout: int = 30):
+    def __init__(self, stall_timeout: int = 30, slow_grace_period: int = 15):
         self.stall_timeout = stall_timeout
+        self.slow_grace_period = slow_grace_period
         self._last_frame_count = 0
         self._last_frame_time = time.time()
+        self._start_time = time.time()
         self._latest = HealthSnapshot()
         # Accumulator for -progress key=value blocks
         self._pending = {}
@@ -142,7 +144,8 @@ class HealthMonitor:
             self._last_frame_time = now
 
         is_stalled = (now - self._last_frame_time) > self.stall_timeout
-        is_slow = 0 < speed < 0.9
+        in_grace = (now - self._start_time) < self.slow_grace_period
+        is_slow = 0 < speed < 0.9 and not in_grace
 
         if is_stalled:
             logger.warning("Stream stalled: no new frames for %.0fs", now - self._last_frame_time)
@@ -215,5 +218,6 @@ class HealthMonitor:
         """Reset state for a new stream session."""
         self._last_frame_count = 0
         self._last_frame_time = time.time()
+        self._start_time = time.time()
         self._latest = HealthSnapshot()
         self._pending = {}
