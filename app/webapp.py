@@ -31,28 +31,34 @@ def create_app() -> Flask:
 
 
 def main() -> None:
-    config = manager.load()
+    import traceback
 
-    log_level = manager.get(config, "system", "log_level", "INFO")
-    logging.basicConfig(
-        level=getattr(logging, log_level, logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-    app = create_app()
-
-    host = manager.get(config, "web", "host", "0.0.0.0")
-    port = manager.get(config, "web", "port", 8080)
-
-    logging.getLogger(__name__).info("Starting web UI on %s:%d", host, port)
-
-    # Use waitress for production, Flask dev server as fallback
     try:
-        from waitress import serve
-        serve(app, host=host, port=port)
-    except ImportError:
-        app.run(host=host, port=port, debug=False)
+        config = manager.load()
+
+        log_level = manager.get(config, "system", "log_level", "INFO")
+        logging.basicConfig(
+            level=getattr(logging, log_level, logging.INFO),
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+
+        app = create_app()
+
+        host = manager.get(config, "web", "host", "0.0.0.0")
+        port = manager.get(config, "web", "port", 8080)
+
+        logging.getLogger(__name__).info("Starting web UI on %s:%d", host, port)
+
+        # Use waitress for production, Flask dev server as fallback
+        try:
+            from waitress import serve
+            serve(app, host=host, port=port)
+        except ImportError:
+            app.run(host=host, port=port, debug=False)
+    except Exception:
+        traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":

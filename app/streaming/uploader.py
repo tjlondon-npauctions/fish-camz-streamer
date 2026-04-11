@@ -9,8 +9,6 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import requests
-
 logger = logging.getLogger(__name__)
 
 
@@ -38,8 +36,8 @@ class HLSUploader:
         else:
             self._base_url = f"https://storage.bunnycdn.com/{storage_zone}"
 
-        self._session = requests.Session()
-        self._session.headers["AccessKey"] = api_key
+        self._session = None
+        self._requests = None
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -53,6 +51,11 @@ class HLSUploader:
 
     def start(self) -> None:
         """Start the background upload thread."""
+        import requests as _requests
+        self._session = _requests.Session()
+        self._session.headers["AccessKey"] = self._api_key
+        self._requests = _requests
+
         self._segment_dir.mkdir(parents=True, exist_ok=True)
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -148,7 +151,7 @@ class HLSUploader:
                 self._error_count += 1
                 logger.warning("Upload failed for %s: HTTP %d", remote_name, resp.status_code)
                 return False
-        except requests.RequestException as e:
+        except self._requests.RequestException as e:
             self._last_error = f"Upload {remote_name}: {e}"
             self._error_count += 1
             logger.warning("Upload failed for %s: %s", remote_name, e)
@@ -159,7 +162,7 @@ class HLSUploader:
         url = f"{self._base_url}/{self._stream_path}/{remote_name}"
         try:
             self._session.delete(url, timeout=10)
-        except requests.RequestException:
+        except self._requests.RequestException:
             pass  # Best effort cleanup
 
     def _write_state(self) -> None:
