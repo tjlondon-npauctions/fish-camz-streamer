@@ -108,6 +108,20 @@ class TestSetupChecks:
         config = _make_config(cloudflare={"stream_key": ""})
         assert manager.is_streaming_ready(config) is False
 
+    def test_streaming_ready_hls_mode(self):
+        config = _make_config(
+            output={"mode": "hls"},
+            bunny={"storage_zone": "test-zone", "api_key": "test-key"},
+        )
+        assert manager.is_streaming_ready(config) is True
+
+    def test_streaming_not_ready_hls_no_zone(self):
+        config = _make_config(
+            output={"mode": "hls"},
+            bunny={"storage_zone": "", "api_key": "test-key"},
+        )
+        assert manager.is_streaming_ready(config) is False
+
 
 class TestLoadSave:
     def test_save_and_load_roundtrip(self, tmp_path):

@@ -11,9 +11,24 @@ camera:
   password: ""
   transport: "tcp"            # tcp (recommended) or udp
 
+output:
+  mode: "rtmp"                # "rtmp" (Cloudflare/RTMPS) or "hls" (HLS + CDN)
+
 cloudflare:
   rtmps_url: "rtmps://live.cloudflare.com:443/live/"
   stream_key: ""
+
+hls:
+  segment_duration: 6         # seconds per .ts segment
+  playlist_size: 5            # segments in rolling playlist
+  segment_dir: "/run/rpie/hls"
+
+bunny:
+  storage_zone: ""            # Bunny Storage zone name
+  api_key: ""                 # Bunny Storage API key
+  region: ""                  # Storage region (empty=default, or: ny, la, sg, syd, etc.)
+  cdn_url: ""                 # Pull zone URL e.g. https://fish-camz.b-cdn.net
+  stream_path: "live"         # subfolder on CDN
 
 encoding:
   mode: "auto"                # auto (copy if possible), copy, transcode
