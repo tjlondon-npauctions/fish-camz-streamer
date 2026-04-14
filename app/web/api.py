@@ -56,9 +56,10 @@ def _read_state_file(filename: str) -> dict:
 @api.route("/status")
 def stream_status():
     """Current stream status (read from shared tmpfs)."""
+    config = manager.load()
     state = _read_state_file("state.json")
     if not state:
-        return jsonify({
+        state = {
             "running": False,
             "uptime_seconds": 0,
             "restart_count": 0,
@@ -70,7 +71,11 @@ def stream_status():
             "is_stalled": False,
             "is_slow": False,
             "pid": None,
-        })
+        }
+    # Include config diagnostics
+    state["config_output_mode"] = manager.get(config, "output", "mode", "rtmp")
+    state["config_bunny_cdn_url"] = manager.get(config, "bunny", "cdn_url", "")
+    state["config_bunny_storage_zone"] = manager.get(config, "bunny", "storage_zone", "")
     return jsonify(state)
 
 

@@ -141,13 +141,16 @@ def settings():
                 flash(f"Could not restart stream: {e}", "error")
 
         # Manage Cloudflare Tunnel
-        remote_enabled = manager.get(config, "remote_access", "enabled", False)
-        remote_token = manager.get(config, "remote_access", "tunnel_token", "")
-        if remote_enabled and remote_token:
-            _start_tunnel(remote_token)
-            flash("Remote access tunnel starting...", "info")
-        elif not remote_enabled:
-            _stop_tunnel()
+        try:
+            remote_enabled = manager.get(config, "remote_access", "enabled", False)
+            remote_token = manager.get(config, "remote_access", "tunnel_token", "")
+            if remote_enabled and remote_token:
+                _start_tunnel(remote_token)
+                flash("Remote access tunnel starting...", "info")
+            elif not remote_enabled:
+                _stop_tunnel()
+        except Exception as e:
+            logger.warning("Tunnel management failed: %s", e)
 
         return redirect(url_for("routes.settings"))
 

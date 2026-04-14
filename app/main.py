@@ -30,7 +30,8 @@ def main() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    logger.info("RPie-Streamer engine starting...")
+    output_mode = manager.get(config, "output", "mode", "rtmp")
+    logger.info("RPie-Streamer engine starting... (output_mode=%s)", output_mode)
 
     # Single shutdown event used throughout
     shutdown_event = threading.Event()
