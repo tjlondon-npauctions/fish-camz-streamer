@@ -138,7 +138,7 @@ class HealthMonitor:
         self._update_snapshot(now, frame_count, fps, bitrate, speed, elapsed)
 
     def _update_snapshot(self, now, frame_count, fps, bitrate, speed, elapsed):
-        """Update the health snapshot with new values."""
+        """Update the health snapshot with new values, clamped to sane bounds."""
         if frame_count > self._last_frame_count:
             self._last_frame_count = frame_count
             self._last_frame_time = now
@@ -152,12 +152,17 @@ class HealthMonitor:
         if is_slow:
             logger.warning("Stream slow: speed=%.2fx (encoding can't keep up)", speed)
 
+        # Clamp to sane bounds — FFmpeg can occasionally report wild values
+        fps = min(fps, 120) if fps > 0 else self._latest.fps
+        bitrate = min(bitrate, 50000) if bitrate > 0 else self._latest.bitrate_kbps
+        speed = min(speed, 5.0) if speed > 0 else self._latest.speed
+
         self._latest = HealthSnapshot(
             timestamp=now,
             frame_count=frame_count,
-            fps=fps if fps else self._latest.fps,
-            bitrate_kbps=bitrate if bitrate else self._latest.bitrate_kbps,
-            speed=speed if speed else self._latest.speed,
+            fps=fps,
+            bitrate_kbps=bitrate,
+            speed=speed,
             elapsed_seconds=elapsed if elapsed else self._latest.elapsed_seconds,
             is_stalled=is_stalled,
             is_slow=is_slow,

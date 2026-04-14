@@ -15,8 +15,9 @@ from typing import Optional
 
 from app.camera.probe import StreamInfo, probe_stream
 from app.config import manager
-from app.streaming.ffmpeg_builder import build_command
+from app.streaming.ffmpeg_builder import build_command, _build_rtsp_url
 from app.streaming.health import HealthMonitor, HealthSnapshot
+from app.streaming.uploader import HLSUploader
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,9 @@ class StreamEngine:
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
 
+        # HLS uploader (started when output mode includes HLS)
+        self._uploader: Optional[HLSUploader] = None
+
         # State
         self._running = False
         self._start_time: Optional[float] = None
@@ -69,11 +73,34 @@ class StreamEngine:
 
             self._stop_event.clear()
 
-            # Ensure HLS segment directory exists if in HLS mode
+            # Ensure HLS segment directory exists and start uploader if needed
             output_mode = self.config.get("output", {}).get("mode", "rtmp")
-            if output_mode == "hls":
+            if output_mode in ("hls", "both"):
                 hls_dir = self.config.get("hls", {}).get("segment_dir", "/run/rpie/hls")
                 Path(hls_dir).mkdir(parents=True, exist_ok=True)
+
+                # Start HLS uploader if Bunny CDN is configured
+                bunny_cfg = self.config.get("bunny", {})
+                if bunny_cfg.get("storage_zone") and bunny_cfg.get("api_key"):
+                    state_dir = manager.get(self.config, "system", "state_dir", "/run/rpie")
+                    hls_cfg = self.config.get("hls", {})
+                    self._uploader = HLSUploader(
+                        segment_dir=hls_dir,
+                        storage_zone=bunny_cfg["storage_zone"],
+                        api_key=bunny_cfg["api_key"],
+                        region=bunny_cfg.get("region", ""),
+                        stream_path=bunny_cfg.get("stream_path", "live"),
+                        state_dir=state_dir,
+                        buffer_segments=hls_cfg.get("buffer_segments", 150),
+                    )
+                    self._uploader.start()
+                else:
+                    logger.warning("HLS mode enabled but Bunny CDN not configured — segments will be local only")
+
+            # Generate a session ID for unique segment filenames
+            # This prevents CDN collisions when the stream restarts
+            session_id = str(int(time.time()) % 100000)
+            self.config.setdefault("hls", {})["session_id"] = session_id
 
             # Probe camera to determine codec strategy
             probe = self._probe_camera()
@@ -119,6 +146,14 @@ class StreamEngine:
 
     def stop(self) -> None:
         """Stop the FFmpeg process gracefully."""
+        # Stop the HLS uploader first (let it finish any in-flight uploads)
+        if self._uploader:
+            logger.info("Stopping HLS uploader...")
+            self._uploader.stop()
+            # Delete the playlist from CDN so viewers get 404 instead of stale content
+            self._uploader.cleanup()
+            self._uploader = None
+
         with self._lock:
             self._stop_event.set()
             process = self._process
@@ -143,6 +178,18 @@ class StreamEngine:
         for thread in (self._stdout_thread, self._stderr_thread):
             if thread and thread.is_alive():
                 thread.join(timeout=5)
+
+        # Remove the finalized playlist (contains EXT-X-ENDLIST)
+        # so the next session starts clean and the CDN doesn't serve
+        # a stale VOD playlist to viewers
+        hls_dir = self.config.get("hls", {}).get("segment_dir", "/run/rpie/hls")
+        playlist_path = Path(hls_dir) / "live.m3u8"
+        try:
+            if playlist_path.exists():
+                playlist_path.unlink()
+                logger.info("Removed finalized playlist")
+        except OSError:
+            pass
 
         with self._lock:
             self._running = False
@@ -180,6 +227,7 @@ class StreamEngine:
             "is_stalled": health.is_stalled,
             "is_slow": health.is_slow,
             "pid": self._process.pid if self._process else None,
+            "uploader": self._uploader.get_status() if self._uploader else None,
         }
 
     def get_health(self) -> HealthSnapshot:
@@ -242,7 +290,8 @@ class StreamEngine:
 
     def _probe_camera(self) -> Optional[StreamInfo]:
         """Probe the camera stream, returning None on failure."""
-        rtsp_url = manager.get(self.config, "camera", "rtsp_url", "")
+        cam = self.config.get("camera", {})
+        rtsp_url = _build_rtsp_url(cam)
         if not rtsp_url:
             return None
 
@@ -267,10 +316,12 @@ class StreamEngine:
                 line = line.strip()
                 if line:
                     self._health.parse_line(line)
-                    # Periodically update the state file with new metrics
                     self._write_state()
         except (ValueError, OSError):
-            pass  # Process closed
+            pass  # Process closed — expected on stop
+        except Exception as e:
+            logger.error("FFmpeg stdout reader crashed: %s", e)
+            self._last_error = f"Health monitor crashed: {e}"
 
     def _read_stderr(self) -> None:
         """Background thread: read FFmpeg stderr for errors."""
@@ -292,7 +343,9 @@ class StreamEngine:
                     logger.error("FFmpeg: %s", line)
                     self._last_error = line
         except (ValueError, OSError):
-            pass  # Process closed
+            pass  # Process closed — expected on stop
+        except Exception as e:
+            logger.error("FFmpeg stderr reader crashed: %s", e)
 
         # If FFmpeg exited quickly, dump all captured output for debugging
         if early_lines and self._process and self._process.poll() is not None:

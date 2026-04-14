@@ -18,7 +18,10 @@ def create_app() -> Flask:
         static_folder="../static",
     )
 
-    app.secret_key = manager.get(config, "web", "secret_key", "change-me-on-first-run")
+    secret_key = manager.get(config, "web", "secret_key", "")
+    if not secret_key:
+        raise RuntimeError("web.secret_key is not set in config. Run setup or reload config.")
+    app.secret_key = secret_key
 
     # Register blueprints
     from app.web.routes import routes
@@ -44,6 +47,23 @@ def main() -> None:
         )
 
         app = create_app()
+
+        # Start GPS reader (if enabled)
+        from app.gps.reader import GpsReader
+        gps_cfg = config.get("gps", {})
+        if gps_cfg.get("enabled", False):
+            gps_reader = GpsReader(
+                gpsd_host=gps_cfg.get("gpsd_host", "localhost"),
+                gpsd_port=gps_cfg.get("gpsd_port", 2947),
+                poll_interval=gps_cfg.get("poll_interval", 5),
+                state_dir=manager.get(config, "system", "state_dir", "/run/rpie"),
+            )
+            gps_reader.start()
+
+        # Start heartbeat to Fishcamz backend (if configured)
+        from app.heartbeat import HeartbeatSender
+        heartbeat = HeartbeatSender(config)
+        heartbeat.start()
 
         host = manager.get(config, "web", "host", "0.0.0.0")
         port = manager.get(config, "web", "port", 8080)

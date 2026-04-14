@@ -12,7 +12,7 @@ camera:
   transport: "tcp"            # tcp (recommended) or udp
 
 output:
-  mode: "rtmp"                # "rtmp" (Cloudflare/RTMPS) or "hls" (HLS + CDN)
+  mode: "rtmp"                # "rtmp", "hls", or "both" (RTMP + HLS simultaneously)
 
 cloudflare:
   rtmps_url: "rtmps://live.cloudflare.com:443/live/"
@@ -20,8 +20,9 @@ cloudflare:
 
 hls:
   segment_duration: 6         # seconds per .ts segment
-  playlist_size: 5            # segments in rolling playlist
-  segment_dir: "/run/rpie/hls"
+  playlist_size: 10           # segments in rolling playlist (60s window)
+  segment_dir: "/app/data/hls" # SD card for buffer persistence (not tmpfs)
+  buffer_segments: 150        # keep 150 segments on disk (~15 min at 6s each)
 
 bunny:
   storage_zone: ""            # Bunny Storage zone name
@@ -59,6 +60,17 @@ web:
   username: ""                # empty = first-run setup required
   password_hash: ""
   secret_key: ""              # auto-generated on first run
+
+gps:
+  enabled: false              # enable GPS tracking (requires USB GPS dongle + gpsd)
+  gpsd_host: "localhost"      # gpsd daemon host
+  gpsd_port: 2947             # gpsd daemon port
+  poll_interval: 5            # seconds between GPS polls
+
+backend:
+  url: ""                     # Fishcamz backend e.g. https://fishcamz.com
+  vessel_api_key: ""          # shared secret for vessel authentication
+  heartbeat_interval: 60      # seconds between heartbeats
 
 remote_access:
   enabled: false

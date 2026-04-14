@@ -23,6 +23,7 @@ def get_system_stats() -> dict:
         "temperature": _cpu_temperature(),
         "uptime_seconds": _system_uptime(),
         "network_interfaces": _network_interfaces(),
+        "network_io": _network_io(),
     }
 
 
@@ -71,6 +72,23 @@ def _cpu_temperature() -> float:
 def _system_uptime() -> int:
     """System uptime in seconds."""
     return int(time.time() - psutil.boot_time())
+
+
+def _network_io() -> dict:
+    """Get cumulative network I/O counters per interface (bytes sent/received)."""
+    result = {}
+    try:
+        counters = psutil.net_io_counters(pernic=True)
+        for name, io in counters.items():
+            if name == "lo" or name.startswith("docker") or name.startswith("veth"):
+                continue
+            result[name] = {
+                "bytes_sent": io.bytes_sent,
+                "bytes_recv": io.bytes_recv,
+            }
+    except (AttributeError, OSError):
+        pass
+    return result
 
 
 def _network_interfaces() -> list:

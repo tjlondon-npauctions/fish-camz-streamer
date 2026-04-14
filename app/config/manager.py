@@ -138,8 +138,13 @@ def validate(config: dict) -> list[str]:
     errors = []
 
     rtsp_url = get(config, "camera", "rtsp_url", "")
-    if rtsp_url and not rtsp_url.startswith("rtsp://"):
-        errors.append("Camera RTSP URL must start with rtsp://")
+    if rtsp_url:
+        from urllib.parse import urlparse
+        parsed = urlparse(rtsp_url)
+        if parsed.scheme not in ("rtsp", "rtsps"):
+            errors.append("Camera URL must use rtsp:// or rtsps:// scheme")
+        elif not parsed.netloc:
+            errors.append("Camera RTSP URL must include a host address")
 
     stream_key = get(config, "cloudflare", "stream_key", "")
     if stream_key and " " in stream_key:
@@ -165,10 +170,21 @@ def is_setup_complete(config: dict) -> bool:
     return bool(get(config, "web", "password_hash"))
 
 
+REQUIRED_FOR_BOTH = REQUIRED_FOR_RTMP + [
+    ("bunny", "storage_zone"),
+    ("bunny", "api_key"),
+]
+
+
 def is_streaming_ready(config: dict) -> bool:
     """Check if all required fields for streaming are configured."""
     output_mode = get(config, "output", "mode", "rtmp")
-    required = REQUIRED_FOR_HLS if output_mode == "hls" else REQUIRED_FOR_RTMP
+    if output_mode == "both":
+        required = REQUIRED_FOR_BOTH
+    elif output_mode == "hls":
+        required = REQUIRED_FOR_HLS
+    else:
+        required = REQUIRED_FOR_RTMP
     for section, key in required:
         if not get(config, section, key):
             return False

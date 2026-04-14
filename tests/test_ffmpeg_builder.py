@@ -219,8 +219,8 @@ class TestHLSOutput:
         """HLS mode should output to local segments, not RTMPS."""
         config = _base_config(output={"mode": "hls"}, hls={
             "segment_duration": 6,
-            "playlist_size": 5,
             "segment_dir": "/tmp/test-hls",
+            "session_id": "12345",
         })
         cmd = build_command(config, _h264_aac_probe())
         assert "-f" in cmd
@@ -228,10 +228,26 @@ class TestHLSOutput:
         assert "-hls_time" in cmd
         assert cmd[cmd.index("-hls_time") + 1] == "6"
         assert "-hls_list_size" in cmd
-        assert cmd[cmd.index("-hls_list_size") + 1] == "5"
+        assert cmd[cmd.index("-hls_list_size") + 1] == "10"  # default is now 10
         assert cmd[-1] == "/tmp/test-hls/live.m3u8"
         assert "flv" not in cmd
         assert "rtmps" not in " ".join(cmd)
+        # Session-based segment naming
+        seg_filename = cmd[cmd.index("-hls_segment_filename") + 1]
+        assert "s12345_" in seg_filename
+        assert "%06d" in seg_filename
+
+    def test_hls_no_delete_segments_flag(self):
+        """HLS should use append_list only, not delete_segments (CDN handles retention)."""
+        config = _base_config(output={"mode": "hls"}, hls={
+            "segment_dir": "/tmp/test-hls",
+            "session_id": "99999",
+        })
+        cmd = build_command(config, _h264_aac_probe())
+        flags_idx = cmd.index("-hls_flags")
+        flags = cmd[flags_idx + 1]
+        assert "append_list" in flags
+        assert "delete_segments" not in flags
 
     def test_hls_with_copy(self):
         """HLS mode should still use copy when H.264 source."""
@@ -239,6 +255,7 @@ class TestHLSOutput:
             "segment_duration": 4,
             "playlist_size": 3,
             "segment_dir": "/tmp/test-hls",
+            "session_id": "1",
         })
         cmd = build_command(config, _h264_aac_probe())
         assert "-c:v" in cmd
@@ -252,3 +269,36 @@ class TestHLSOutput:
         cmd = build_command(config, _h264_aac_probe())
         assert "flv" in cmd
         assert "hls" not in cmd
+
+    def test_both_mode_includes_rtmp_and_hls(self):
+        """Both mode should output to RTMPS and HLS simultaneously."""
+        config = _base_config(output={"mode": "both"}, hls={
+            "segment_duration": 6,
+            "segment_dir": "/tmp/test-hls",
+            "session_id": "55555",
+        })
+        cmd = build_command(config, _h264_aac_probe())
+        assert "flv" in cmd
+        assert "hls" in cmd
+        assert "rtmps://live.cloudflare.com:443/live/test-key-123" in cmd
+        assert "/tmp/test-hls/live.m3u8" in cmd
+
+    def test_hls_mode_excludes_rtmp(self):
+        """Pure HLS mode should not include RTMPS output."""
+        config = _base_config(output={"mode": "hls"}, hls={
+            "segment_duration": 6,
+            "segment_dir": "/tmp/test-hls",
+            "session_id": "1",
+        })
+        cmd = build_command(config, _h264_aac_probe())
+        assert "hls" in cmd
+        assert "flv" not in cmd
+
+    def test_hls_default_session_id(self):
+        """Without session_id, should default to '0'."""
+        config = _base_config(output={"mode": "hls"}, hls={
+            "segment_dir": "/tmp/test-hls",
+        })
+        cmd = build_command(config, _h264_aac_probe())
+        seg_filename = cmd[cmd.index("-hls_segment_filename") + 1]
+        assert "s0_" in seg_filename

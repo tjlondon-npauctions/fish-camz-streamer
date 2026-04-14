@@ -163,6 +163,32 @@
         </label>
     </article>
 
+    <!-- Fishcamz Backend -->
+    <article>
+        <header><strong>Fishcamz Backend</strong></header>
+        <p><small>Connect this vessel to the Fishcamz platform. The registration token is generated
+           when you create the vessel in the <a href="{{ config.get('backend', {}).get('url', '') or '#' }}" target="_blank">admin dashboard</a>.</small></p>
+
+        {% set backend = config.get('backend', {}) %}
+
+        <label for="backend_url">Backend URL</label>
+        <input type="text" id="backend_url" name="backend_url"
+               value="{{ backend.get('url', '') }}"
+               placeholder="https://fishcamz.com">
+
+        <label for="vessel_api_key">Registration Token</label>
+        <input type="password" id="vessel_api_key" name="vessel_api_key"
+               placeholder="{{ '••••••••' if backend.get('vessel_api_key') else 'Paste token from admin dashboard' }}">
+
+        <label for="heartbeat_interval">Heartbeat Interval (seconds)</label>
+        <input type="number" id="heartbeat_interval" name="heartbeat_interval"
+               value="{{ backend.get('heartbeat_interval', 60) }}"
+               min="10" max="300" step="1">
+
+        <button type="button" class="outline" onclick="testBackend()">Test Connection</button>
+        <div id="backend-test-results" class="hidden"></div>
+    </article>
+
     <!-- Remote Access -->
     <article>
         <header><strong>Remote Access</strong></header>
@@ -357,6 +383,32 @@ function detectChannels(cam) {
         }
     })
     .catch(function() { setText(div, 'Channel detection failed.'); });
+}
+
+function testBackend() {
+    var url = document.getElementById('backend_url').value;
+    if (!url) { alert('Enter a backend URL first.'); return; }
+
+    var div = document.getElementById('backend-test-results');
+    div.className = '';
+    div.innerHTML = '<p aria-busy="true">Testing connection to backend...</p>';
+
+    fetch('/api/backend/test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ url: url })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            setText(div, 'Connected to backend successfully.');
+        } else {
+            setText(div, 'Connection failed: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(function() {
+        setText(div, 'Connection test failed. Check the URL and network.');
+    });
 }
 
 function probeCamera() {

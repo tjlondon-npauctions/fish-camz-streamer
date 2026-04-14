@@ -98,6 +98,21 @@ def settings():
         # Update stream settings
         manager.set_value(config, "stream", "auto_start", "auto_start" in request.form)
 
+        # Update backend settings
+        backend_url = request.form.get("backend_url", "").strip()
+        if backend_url:
+            manager.set_value(config, "backend", "url", backend_url)
+        vessel_api_key = request.form.get("vessel_api_key", "").strip()
+        if vessel_api_key:  # Only overwrite if a new value was entered
+            manager.set_value(config, "backend", "vessel_api_key", vessel_api_key)
+        heartbeat_interval = request.form.get("heartbeat_interval", "60").strip()
+        try:
+            interval = int(heartbeat_interval)
+            if 10 <= interval <= 300:
+                manager.set_value(config, "backend", "heartbeat_interval", interval)
+        except ValueError:
+            pass
+
         # Update remote access
         manager.set_value(config, "remote_access", "enabled", "remote_enabled" in request.form)
         tunnel_token = request.form.get("tunnel_token", "").strip()

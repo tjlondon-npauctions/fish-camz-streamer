@@ -109,6 +109,22 @@ def uploader_status():
     return jsonify(state)
 
 
+@api.route("/gps")
+def gps_status():
+    """GPS position and status."""
+    state = _read_state_file("gps.json")
+    if not state:
+        return jsonify({
+            "has_fix": False,
+            "lat": None,
+            "lng": None,
+            "speed_knots": None,
+            "heading": None,
+            "error": "GPS not enabled",
+        })
+    return jsonify(state)
+
+
 @api.route("/stream/<action>", methods=["POST"])
 def stream_control(action):
     """Control the streamer container: start, stop, restart."""
@@ -281,6 +297,31 @@ def _redact_log_lines(lines):
             line = pattern.sub(replacement, line)
         result.append(line)
     return result
+
+
+@api.route("/backend/test", methods=["POST"])
+def test_backend():
+    """Test connectivity to the Fishcamz backend."""
+    import requests as http_requests
+
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip().rstrip("/")
+
+    if not url:
+        return jsonify({"ok": False, "error": "No URL provided"})
+
+    try:
+        resp = http_requests.get(f"{url}/api/vessels", timeout=10)
+        if resp.status_code == 200:
+            return jsonify({"ok": True})
+        else:
+            return jsonify({"ok": False, "error": f"HTTP {resp.status_code}"})
+    except http_requests.ConnectionError:
+        return jsonify({"ok": False, "error": "Could not connect. Check the URL and network."})
+    except http_requests.Timeout:
+        return jsonify({"ok": False, "error": "Connection timed out."})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
 
 
 @api.route("/logs")

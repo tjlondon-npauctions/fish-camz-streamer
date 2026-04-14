@@ -1,12 +1,45 @@
 from __future__ import annotations
 
 import logging
+import re
 import socket
 import uuid
 import xml.etree.ElementTree as ET
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Known NVR model patterns (case-insensitive) — matches hardware or name fields
+_NVR_PATTERNS = re.compile(
+    r"nvr|network.video.recorder|dhr|xvr|dvr",
+    re.IGNORECASE,
+)
+
+# Brand-specific channel URL templates.
+# Each entry: (brand_name, [(channel_num, main_url_suffix, sub_url_suffix), ...])
+# {ch} is replaced with the channel number.
+BRAND_CHANNEL_TEMPLATES = {
+    "uniview": {
+        "main": "/unicast/c{ch}/s0/live",
+        "sub": "/unicast/c{ch}/s1/live",
+        "max_channels": 8,
+    },
+    "hikvision": {
+        "main": "/Streaming/Channels/{ch}01",
+        "sub": "/Streaming/Channels/{ch}02",
+        "max_channels": 8,
+    },
+    "dahua": {
+        "main": "/cam/realmonitor?channel={ch}&subtype=0",
+        "sub": "/cam/realmonitor?channel={ch}&subtype=1",
+        "max_channels": 8,
+    },
+    "reolink": {
+        "main": "/h264Preview_{ch:02d}_main",
+        "sub": "/h264Preview_{ch:02d}_sub",
+        "max_channels": 8,
+    },
+}
 
 # ONVIF WS-Discovery multicast address and port
 WS_DISCOVERY_ADDR = "239.255.255.250"
@@ -39,11 +72,28 @@ NS = {
 }
 
 
+def _get_local_ips() -> list[str]:
+    """Get IPv4 addresses for all non-loopback, non-docker interfaces."""
+    import psutil
+
+    ips = []
+    for name, addrs in psutil.net_if_addrs().items():
+        if name == "lo" or name.startswith("docker") or name.startswith("br-") or name.startswith("veth"):
+            continue
+        stats = psutil.net_if_stats().get(name)
+        if stats and not stats.isup:
+            continue
+        for addr in addrs:
+            if addr.family.name == "AF_INET" and addr.address != "127.0.0.1":
+                ips.append(addr.address)
+    return ips
+
+
 def discover_cameras(timeout: float = 5.0) -> list[dict]:
     """Scan the local network for ONVIF cameras via WS-Discovery.
 
-    Sends a multicast probe and collects responses from ONVIF-compliant
-    devices. Returns basic info about each device found.
+    Sends a multicast probe on every active network interface so cameras
+    on all subnets (e.g. a POE camera on a USB ethernet dongle) are found.
 
     Args:
         timeout: Seconds to wait for responses
@@ -54,23 +104,34 @@ def discover_cameras(timeout: float = 5.0) -> list[dict]:
     message_id = str(uuid.uuid4())
     probe_msg = PROBE_TEMPLATE.format(message_id=message_id).encode("utf-8")
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.settimeout(timeout)
-
-    # Enable multicast
-    sock.setsockopt(
-        socket.IPPROTO_IP,
-        socket.IP_MULTICAST_TTL,
-        2,
-    )
+    local_ips = _get_local_ips()
+    if not local_ips:
+        logger.warning("No network interfaces found for camera discovery")
+        return []
 
     cameras = []
     seen_ips = set()
 
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.settimeout(timeout)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+
     try:
-        sock.sendto(probe_msg, (WS_DISCOVERY_ADDR, WS_DISCOVERY_PORT))
-        logger.info("Sent WS-Discovery probe, waiting %ss for responses...", timeout)
+        # Send probe on each interface so we reach all subnets
+        for local_ip in local_ips:
+            try:
+                sock.setsockopt(
+                    socket.IPPROTO_IP,
+                    socket.IP_MULTICAST_IF,
+                    socket.inet_aton(local_ip),
+                )
+                sock.sendto(probe_msg, (WS_DISCOVERY_ADDR, WS_DISCOVERY_PORT))
+                logger.info("Sent WS-Discovery probe on %s", local_ip)
+            except OSError as e:
+                logger.debug("Could not probe on %s: %s", local_ip, e)
+
+        logger.info("Waiting %ss for responses...", timeout)
 
         while True:
             try:
@@ -128,13 +189,89 @@ def _parse_probe_response(data: bytes, ip: str) -> Optional[dict]:
         elif "/hardware/" in scope:
             hardware = scope.split("/hardware/")[-1]
 
+    # Classify device type based on hardware model and scopes
+    device_type = _classify_device(hardware, name, scopes)
+
     return {
         "ip": ip,
         "xaddrs": xaddrs,
         "name": name or f"Camera at {ip}",
         "hardware": hardware,
         "scopes": scopes,
+        "device_type": device_type,
     }
+
+
+def _classify_device(hardware: str, name: str, scopes: str) -> str:
+    """Classify an ONVIF device as 'nvr' or 'camera' based on metadata."""
+    combined = f"{hardware} {name} {scopes}"
+    if _NVR_PATTERNS.search(combined):
+        return "nvr"
+    return "camera"
+
+
+def detect_brand(hardware: str, name: str, scopes: str) -> Optional[str]:
+    """Guess the device brand from ONVIF metadata.
+
+    Returns a key from BRAND_CHANNEL_TEMPLATES, or None if unknown.
+    """
+    combined = f"{hardware} {name} {scopes}".lower()
+    if "uniview" in combined or "unv" in combined:
+        return "uniview"
+    if "hikvision" in combined or "hikv" in combined:
+        return "hikvision"
+    if "dahua" in combined:
+        return "dahua"
+    if "reolink" in combined:
+        return "reolink"
+    return None
+
+
+def get_channel_urls(
+    ip: str,
+    brand: Optional[str] = None,
+    username: str = "",
+    password: str = "",
+    max_channels: int = 8,
+) -> list[dict]:
+    """Build a list of candidate channel URLs for a device.
+
+    If brand is known, uses brand-specific templates.
+    If brand is None, tries all known brands' channel-1 patterns.
+
+    Returns list of dicts: {channel, quality, url, brand}
+    """
+    auth = f"{username}:{password}@" if username else ""
+    base = f"rtsp://{auth}{ip}:554"
+    candidates = []
+
+    if brand and brand in BRAND_CHANNEL_TEMPLATES:
+        tmpl = BRAND_CHANNEL_TEMPLATES[brand]
+        limit = min(max_channels, tmpl["max_channels"])
+        for ch in range(1, limit + 1):
+            candidates.append({
+                "channel": ch,
+                "quality": "main",
+                "url": base + tmpl["main"].format(ch=ch),
+                "brand": brand,
+            })
+            candidates.append({
+                "channel": ch,
+                "quality": "sub",
+                "url": base + tmpl["sub"].format(ch=ch),
+                "brand": brand,
+            })
+    else:
+        # Unknown brand — try channel 1 of each brand to detect which works
+        for b, tmpl in BRAND_CHANNEL_TEMPLATES.items():
+            candidates.append({
+                "channel": 1,
+                "quality": "main",
+                "url": base + tmpl["main"].format(ch=1),
+                "brand": b,
+            })
+
+    return candidates
 
 
 def get_common_rtsp_urls(ip: str, username: str = "", password: str = "") -> list[str]:

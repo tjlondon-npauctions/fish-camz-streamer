@@ -36,12 +36,14 @@ def build_command(config: dict, probe: Optional[StreamInfo] = None) -> list[str]
     # Encoding options (copy vs transcode)
     cmd += _encoding_args(enc, probe)
 
-    # Output
+    # Output — supports "rtmp", "hls", or "both"
     output_mode = config.get("output", {}).get("mode", "rtmp")
-    if output_mode == "hls":
-        cmd += _hls_output_args(config)
-    else:
+
+    if output_mode in ("rtmp", "both"):
         cmd += ["-f", "flv", rtmps_url]
+
+    if output_mode in ("hls", "both"):
+        cmd += _hls_output_args(config)
 
     return cmd
 
@@ -77,6 +79,11 @@ def _input_args(cam: dict, rtsp_url: str) -> list[str]:
 
     args = []
 
+    # Generate timestamps if the source doesn't provide proper duration info.
+    # Some cameras (especially with VBR or non-standard frame rates) emit
+    # packets with duration=0, which breaks HLS segment timing.
+    args += ["-fflags", "+genpts"]
+
     if rtsp_url.startswith("rtsp://"):
         # RTSP-specific options (reconnect flags are NOT valid for RTSP)
         args += ["-rtsp_transport", transport]
@@ -104,18 +111,24 @@ def _encoding_args(enc: dict, probe: Optional[StreamInfo]) -> list[str]:
 
 
 def _hls_output_args(config: dict) -> list[str]:
-    """Build HLS output arguments for local segment writing."""
+    """Build HLS output arguments for local segment writing.
+
+    Uses a session_id prefix on segment filenames to prevent collisions
+    when the stream restarts. The session_id is set by the StreamEngine
+    in config["hls"]["session_id"] before calling build_command().
+    """
     hls = config.get("hls", {})
     segment_duration = hls.get("segment_duration", 6)
-    playlist_size = hls.get("playlist_size", 5)
+    playlist_size = hls.get("playlist_size", 10)
     segment_dir = hls.get("segment_dir", "/run/rpie/hls")
+    session_id = hls.get("session_id", "0")
 
     return [
         "-f", "hls",
         "-hls_time", str(segment_duration),
         "-hls_list_size", str(playlist_size),
-        "-hls_flags", "delete_segments+append_list",
-        "-hls_segment_filename", f"{segment_dir}/seg_%05d.ts",
+        "-hls_flags", "append_list",
+        "-hls_segment_filename", f"{segment_dir}/s{session_id}_%06d.ts",
         f"{segment_dir}/live.m3u8",
     ]
 
