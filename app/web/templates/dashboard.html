@@ -39,6 +39,7 @@
                 <button id="btn-start" class="outline" onclick="streamControl('start', this)">Start</button>
                 <button id="btn-stop" class="outline" onclick="streamControl('stop', this)">Stop</button>
                 <button id="btn-restart" class="outline" onclick="streamControl('restart', this)">Restart</button>
+                <button id="btn-recreate" class="outline contrast" onclick="if(confirm('Recreate the streamer container from the latest image? This pulls the newest version.')) streamControl('recreate', this)">Recreate</button>
             </div>
         </footer>
     </article>

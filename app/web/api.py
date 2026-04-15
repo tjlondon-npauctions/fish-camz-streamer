@@ -132,13 +132,17 @@ def gps_status():
 
 @api.route("/stream/<action>", methods=["POST"])
 def stream_control(action):
-    """Control the streamer container: start, stop, restart."""
-    if action not in ("start", "stop", "restart"):
+    """Control the streamer container: start, stop, restart, recreate."""
+    if action not in ("start", "stop", "restart", "recreate"):
         return jsonify({"error": f"Unknown action: {action}"}), 400
 
     try:
         import docker
         client = docker.from_env()
+
+        if action == "recreate":
+            return _recreate_streamer(client)
+
         container = client.containers.get("rpie-streamer")
 
         if action == "start":
@@ -166,6 +170,53 @@ def stream_control(action):
 
     except Exception as e:
         logger.error("Stream control error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+def _recreate_streamer(client):
+    """Stop, remove, and recreate the streamer container from the current image.
+
+    Copies the container config (image, volumes, network, restart policy,
+    command, labels) from the existing container so it matches
+    docker-compose.yml without needing the compose file inside the container.
+    """
+    try:
+        old = client.containers.get("rpie-streamer")
+        image = old.attrs["Config"]["Image"]
+        # Extract config we need to preserve
+        host_config = old.attrs["HostConfig"]
+        config = old.attrs["Config"]
+        binds = host_config.get("Binds") or []
+
+        # Stop and remove old container
+        logger.info("Recreating streamer: stopping old container...")
+        old.stop(timeout=20)
+        old.remove()
+
+        # Pull latest image (in case Watchtower missed it)
+        logger.info("Pulling latest image: %s", image)
+        try:
+            client.images.pull(image)
+        except Exception as e:
+            logger.warning("Image pull failed (using local): %s", e)
+
+        # Create and start new container with the same config
+        logger.info("Creating new streamer container with binds: %s", binds)
+        new_container = client.containers.run(
+            image,
+            command=config.get("Cmd"),
+            name="rpie-streamer",
+            network_mode=host_config.get("NetworkMode", "host"),
+            volumes=binds,
+            restart_policy=host_config.get("RestartPolicy", {"Name": "unless-stopped"}),
+            labels=config.get("Labels", {}),
+            detach=True,
+        )
+        logger.info("Streamer recreated: %s", new_container.short_id)
+        return jsonify({"status": "ok", "action": "recreate", "container_id": new_container.short_id})
+
+    except Exception as e:
+        logger.error("Streamer recreate failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
 
