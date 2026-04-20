@@ -65,6 +65,25 @@ def main() -> None:
         heartbeat = HeartbeatSender(config)
         heartbeat.start()
 
+        # Auto-start Cloudflare Tunnel on boot if configured and not already running.
+        # Closes a gap where the tunnel was only spawned from the settings form handler,
+        # so a manually-removed container would never come back without re-saving settings.
+        if manager.get(config, "remote_access", "enabled", False):
+            tunnel_token = manager.get(config, "remote_access", "tunnel_token", "")
+            if tunnel_token:
+                try:
+                    import docker
+                    client = docker.from_env()
+                    try:
+                        existing = client.containers.get("rpie-tunnel")
+                        if existing.status != "running":
+                            raise docker.errors.NotFound("not running")
+                    except docker.errors.NotFound:
+                        from app.web.routes import _start_tunnel
+                        _start_tunnel(tunnel_token)
+                except Exception as e:
+                    logging.getLogger(__name__).warning("Tunnel autostart skipped: %s", e)
+
         host = manager.get(config, "web", "host", "0.0.0.0")
         port = manager.get(config, "web", "port", 8080)
 

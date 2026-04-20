@@ -67,6 +67,29 @@ class HeartbeatSender:
             self._thread.join(timeout=10)
         logger.info("Heartbeat stopped")
 
+    def _apply_tunnel_token(self, token: str) -> None:
+        """Persist a new Cloudflare Tunnel token from the backend and (re)start the tunnel.
+
+        The backend delivers a token in the heartbeat response when an admin stages
+        one in vessels_private/{vesselId}.pendingTunnelToken. Idempotent: if the
+        token is already the current one, nothing happens.
+        """
+        config = manager.load()
+        current = manager.get(config, "remote_access", "tunnel_token", "")
+        if current == token:
+            return
+
+        manager.set_value(config, "remote_access", "tunnel_token", token)
+        manager.set_value(config, "remote_access", "enabled", True)
+        manager.save(config)
+        logger.info("Applied new tunnel token from backend (len=%d)", len(token))
+
+        try:
+            from app.web.routes import _start_tunnel
+            _start_tunnel(token)
+        except Exception as e:
+            logger.warning("Could not (re)start tunnel after token update: %s", e)
+
     def _run(self) -> None:
         """Main heartbeat loop."""
         import requests
@@ -108,6 +131,14 @@ class HeartbeatSender:
                 if resp.status_code in (200, 201):
                     self._send_count += 1
                     logger.debug("Heartbeat sent (#%d)", self._send_count)
+                    try:
+                        data = resp.json()
+                    except ValueError:
+                        data = None
+                    if isinstance(data, dict):
+                        new_token = data.get("tunnel_token")
+                        if isinstance(new_token, str) and new_token:
+                            self._apply_tunnel_token(new_token)
                 else:
                     self._last_error = f"HTTP {resp.status_code}"
                     self._error_count += 1
