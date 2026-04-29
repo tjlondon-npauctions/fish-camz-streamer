@@ -119,6 +119,7 @@ class HeartbeatSender:
                     "bunny_stream_path": config.get("bunny", {}).get("stream_path", "live"),
                     "bunny_cdn_url": config.get("bunny", {}).get("cdn_url", ""),
                     "output_mode": config.get("output", {}).get("mode", "rtmp"),
+                    "tunnel_url": config.get("remote_access", {}).get("tunnel_url", ""),
                     "timestamp": time.time(),
                 }
 

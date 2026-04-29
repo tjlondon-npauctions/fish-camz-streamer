@@ -1,14 +1,21 @@
 #!/bin/bash
 # RPie-Streamer Installer
-# Installs Docker and starts the streaming appliance on a Raspberry Pi.
+# Sets up a Raspberry Pi as a Fish Camz streaming appliance:
+#   1. Installs Docker
+#   2. Configures camera network (static IP + DHCP server)
+#   3. Pulls container images and starts services
 #
-# Usage: curl -sSL https://raw.githubusercontent.com/.../install-docker.sh | bash
-# Or:    chmod +x install-docker.sh && ./install-docker.sh
+# Usage: cd rpie-streamer && sudo ./scripts/install-docker.sh
+#
+# Prerequisites:
+#   - Raspberry Pi OS (Bookworm or later)
+#   - Internet connection
+#   - USB ethernet adapter plugged in (for camera network)
 
 set -e
 
 echo "=========================================="
-echo "  RPie-Streamer Installer"
+echo "  Fish Camz Streamer Installer"
 echo "=========================================="
 echo ""
 
@@ -26,70 +33,87 @@ if [[ $EUID -ne 0 ]]; then
     exec sudo "$0" "$@"
 fi
 
-# Detect current user (for Docker group)
+# Detect current user (for Docker group and install dir)
 ACTUAL_USER="${SUDO_USER:-$USER}"
 
-echo "[1/6] Ensuring hostname discovery works..."
-# Install avahi for .local hostname resolution (mDNS)
-apt-get update -qq
-apt-get install -y -qq avahi-daemon > /dev/null 2>&1 || true
-systemctl enable avahi-daemon > /dev/null 2>&1 || true
-systemctl start avahi-daemon > /dev/null 2>&1 || true
-HOSTNAME=$(hostname)
-echo "  Hostname: $HOSTNAME (reachable as ${HOSTNAME}.local on the network)"
-
-echo "[2/6] Installing Docker..."
-if command -v docker &> /dev/null; then
-    echo "  Docker already installed: $(docker --version)"
-else
-    curl -fsSL https://get.docker.com | sh
-    echo "  Docker installed successfully."
-fi
-
-echo "[3/6] Configuring Docker..."
-# Add user to docker group
-usermod -aG docker "$ACTUAL_USER" 2>/dev/null || true
-
-# Enable Docker on boot
-systemctl enable docker
-systemctl start docker
-
-echo "[4/6] Setting up RPie-Streamer..."
-INSTALL_DIR="/home/$ACTUAL_USER/rpie-streamer"
-
-if [[ -d "$INSTALL_DIR" ]]; then
-    echo "  Existing installation found at $INSTALL_DIR"
-    echo "  Updating..."
-    cd "$INSTALL_DIR"
-else
-    echo "  Note: Clone or copy the rpie-streamer project to $INSTALL_DIR"
-    echo "  Example: git clone <repo-url> $INSTALL_DIR"
-
-    if [[ ! -d "$INSTALL_DIR" ]]; then
-        echo "Error: $INSTALL_DIR does not exist."
-        echo ""
-        echo "Please copy the rpie-streamer project files to $INSTALL_DIR and re-run this script."
-        echo "Or run from the project directory:"
-        echo "  cd /path/to/rpie-streamer && sudo ./scripts/install-docker.sh"
-        exit 1
-    fi
-fi
-
-# If script is run from the project directory, use that
+# Find project directory (script lives in scripts/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+INSTALL_DIR="/home/$ACTUAL_USER/rpie-streamer"
+
+# If running from the project directory, use it
 if [[ -f "$PROJECT_DIR/docker-compose.yml" ]]; then
     INSTALL_DIR="$PROJECT_DIR"
 fi
 
+if [[ ! -f "$INSTALL_DIR/docker-compose.yml" ]]; then
+    echo "Error: docker-compose.yml not found."
+    echo ""
+    echo "Please clone or copy the rpie-streamer project to $INSTALL_DIR first:"
+    echo "  git clone <repo-url> $INSTALL_DIR"
+    echo ""
+    echo "Then run this script again."
+    exit 1
+fi
+
 cd "$INSTALL_DIR"
 
-echo "[5/6] Creating data directory..."
+# ── Step 1: System dependencies ──
+
+echo "[1/5] Installing system dependencies..."
+
+apt-get update -qq
+
+# mDNS for .local hostname resolution
+apt-get install -y -qq avahi-daemon > /dev/null 2>&1 || true
+systemctl enable avahi-daemon > /dev/null 2>&1 || true
+systemctl start avahi-daemon > /dev/null 2>&1 || true
+
+HOSTNAME=$(hostname)
+echo "  Hostname: $HOSTNAME (reachable as ${HOSTNAME}.local)"
+
+# ── Step 2: Docker ──
+
+echo ""
+echo "[2/5] Installing Docker..."
+
+if command -v docker &> /dev/null; then
+    echo "  Docker already installed: $(docker --version)"
+else
+    curl -fsSL https://get.docker.com | sh
+    echo "  Docker installed."
+fi
+
+# Add user to docker group and enable on boot
+usermod -aG docker "$ACTUAL_USER" 2>/dev/null || true
+systemctl enable docker
+systemctl start docker
+
+# ── Step 3: Camera network ──
+
+echo ""
+echo "[3/5] Setting up camera network..."
+
+if [[ -f "$INSTALL_DIR/scripts/setup-network.sh" ]]; then
+    bash "$INSTALL_DIR/scripts/setup-network.sh"
+else
+    echo "  Warning: setup-network.sh not found, skipping network setup."
+    echo "  Run it manually later: sudo ./scripts/setup-network.sh"
+fi
+
+# ── Step 4: Data directory ──
+
+echo ""
+echo "[4/5] Preparing data directory..."
+
 mkdir -p data
 chown -R "$ACTUAL_USER:$ACTUAL_USER" data
 
-echo "[6/6] Starting Fish Camz..."
-# Pull pre-built images and start (includes Watchtower for auto-updates)
+# ── Step 5: Start services ──
+
+echo ""
+echo "[5/5] Starting Fish Camz services..."
+
 docker compose pull
 docker compose up -d
 
@@ -102,6 +126,7 @@ echo ""
 # Get IP and hostname
 IP=$(hostname -I | awk '{print $1}')
 HOSTNAME=$(hostname)
+
 echo "  Open your browser and go to:"
 echo ""
 echo "    http://${HOSTNAME}.local:8080"
@@ -110,15 +135,17 @@ echo "  Or by IP address:"
 echo ""
 echo "    http://$IP:8080"
 echo ""
-echo "  Complete the setup wizard to start streaming."
+echo "  Complete the setup wizard to configure your camera and start streaming."
 echo ""
-echo "  To find this Pi later, just browse to:"
-echo "    http://${HOSTNAME}.local:8080"
-echo "  This works from any device on the same network."
+echo "  What's running:"
+echo "    - Web UI on port 8080 (setup wizard + dashboard)"
+echo "    - Stream engine (starts after camera is configured)"
+echo "    - Watchtower (auto-updates every 5 minutes from GHCR)"
+echo "    - dnsmasq (DHCP for cameras on USB ethernet)"
 echo ""
 echo "  Useful commands (SSH in first: ssh ${ACTUAL_USER}@${HOSTNAME}.local):"
 echo "    View logs:     cd $INSTALL_DIR && docker compose logs -f"
 echo "    Stop:          cd $INSTALL_DIR && docker compose down"
 echo "    Restart:       cd $INSTALL_DIR && docker compose restart"
-echo "    Update:        cd $INSTALL_DIR && git pull && docker compose up -d --build"
+echo "    Stream status: curl -s http://localhost:8080/api/status | python3 -m json.tool"
 echo ""

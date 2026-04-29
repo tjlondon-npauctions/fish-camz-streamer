@@ -14,6 +14,30 @@ logger = logging.getLogger(__name__)
 routes = Blueprint("routes", __name__)
 
 
+def _save_camera_probe(config, form, rtsp_url: str) -> None:
+    """Persist the camera.last_probe summary from hidden form fields.
+
+    Only stores the probe if the user-submitted RTSP URL matches the URL
+    that was actually probed. Otherwise (URL was edited after probing,
+    or never probed) the cached summary is cleared.
+    """
+    probed_url = form.get("probed_url", "").strip()
+    if probed_url and probed_url == rtsp_url:
+        try:
+            framerate = float(form.get("probed_framerate", "") or 0)
+        except ValueError:
+            framerate = 0.0
+        manager.set_value(config, "camera", "last_probe", {
+            "url": probed_url,
+            "video_codec": form.get("probed_codec", ""),
+            "resolution": form.get("probed_resolution", ""),
+            "framerate": framerate,
+            "can_copy": form.get("probed_can_copy", "") == "1",
+        })
+    else:
+        manager.set_value(config, "camera", "last_probe", {})
+
+
 @routes.before_request
 def check_auth():
     """Check authentication before every page request."""
@@ -54,12 +78,14 @@ def settings():
         manager.set_value(config, "vessel", "name", request.form.get("vessel_name", "").strip())
 
         # Update camera settings
-        manager.set_value(config, "camera", "rtsp_url", request.form.get("rtsp_url", "").strip())
+        rtsp_url = request.form.get("rtsp_url", "").strip()
+        manager.set_value(config, "camera", "rtsp_url", rtsp_url)
         manager.set_value(config, "camera", "username", request.form.get("cam_username", "").strip())
         cam_password = request.form.get("cam_password", "")
         if cam_password:  # Only overwrite if a new value was entered
             manager.set_value(config, "camera", "password", cam_password)
         manager.set_value(config, "camera", "transport", request.form.get("transport", "tcp"))
+        _save_camera_probe(config, request.form, rtsp_url)
 
         # Update output mode
         manager.set_value(config, "output", "mode", request.form.get("output_mode", "rtmp"))
@@ -118,6 +144,8 @@ def settings():
         tunnel_token = request.form.get("tunnel_token", "").strip()
         if tunnel_token:
             manager.set_value(config, "remote_access", "tunnel_token", tunnel_token)
+        tunnel_url = request.form.get("tunnel_url", "").strip()
+        manager.set_value(config, "remote_access", "tunnel_url", tunnel_url)
 
         # Validate
         errors = manager.validate(config)
@@ -197,7 +225,8 @@ def login():
         else:
             flash("Invalid password.", "error")
 
-    return render_template("login.html")
+    config = manager.load()
+    return render_template("login.html", config=config)
 
 
 @routes.route("/logout")
@@ -243,6 +272,7 @@ def setup():
             manager.set_value(config, "camera", "rtsp_url", rtsp_url)
             manager.set_value(config, "camera", "username", request.form.get("cam_username", "").strip())
             manager.set_value(config, "camera", "password", request.form.get("cam_password", ""))
+            _save_camera_probe(config, request.form, rtsp_url)
             manager.save(config)
             return render_template("setup.html", step=3, config=config)
 

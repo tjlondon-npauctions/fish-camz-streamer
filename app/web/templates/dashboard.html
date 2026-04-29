@@ -2,70 +2,83 @@
 {% block title %}Dashboard - Fish Camz{% endblock %}
 
 {% block content %}
-{% if config.vessel and config.vessel.name %}
-<h2>{{ config.vessel.name }}</h2>
-{% else %}
-<h2>Dashboard</h2>
-{% endif %}
+<!-- Header with vessel name and controls -->
+<div class="dash-header">
+    <h2>{% if config.vessel and config.vessel.name %}{{ config.vessel.name }}{% else %}Dashboard{% endif %}</h2>
+    <div class="dash-controls">
+        <button id="btn-start" class="outline" onclick="streamControl('start', this)">Start</button>
+        <button id="btn-stop" class="outline" onclick="streamControl('stop', this)">Stop</button>
+        <button id="btn-restart" class="outline" onclick="streamControl('restart', this)">Restart</button>
+    </div>
+</div>
 
 <!-- Stream status banner -->
 <article id="uptime-banner" class="status-banner status-offline">
     <span id="status-indicator" class="indicator indicator-offline"></span>
     <strong id="stream-status">Connecting...</strong>
-    <span id="uptime-text" class="hidden"> &mdash; Streaming for <strong id="stream-uptime">--</strong></span>
+    <span id="uptime-text" class="hidden"> &mdash; <span id="stream-uptime">--</span></span>
 </article>
 
 <!-- Toast notification area -->
 <div id="toast-container"></div>
 
-<div class="grid">
-    <!-- Stream Controls + Metrics -->
-    <article>
-        <header><strong>Stream</strong></header>
-        <dl>
-            <dt>FPS</dt>
-            <dd id="stream-fps">--</dd>
-            <dt>Bitrate</dt>
-            <dd id="stream-bitrate">--</dd>
-            <dt>Speed</dt>
-            <dd id="stream-speed">--</dd>
-            <dt>Frames</dt>
-            <dd id="stream-frames">--</dd>
-            <dt>Restarts</dt>
-            <dd id="stream-restarts">0</dd>
-        </dl>
-        <footer>
-            <div role="group">
-                <button id="btn-start" class="outline" onclick="streamControl('start', this)">Start</button>
-                <button id="btn-stop" class="outline" onclick="streamControl('stop', this)">Stop</button>
-                <button id="btn-restart" class="outline" onclick="streamControl('restart', this)">Restart</button>
-                <button id="btn-recreate" class="outline contrast" onclick="if(confirm('Recreate the streamer container from the latest image? This pulls the newest version.')) streamControl('recreate', this)">Recreate</button>
-            </div>
-        </footer>
-    </article>
-
-    <!-- System Resources -->
-    <article>
-        <header><strong>System</strong></header>
-        <dl>
-            <dt>CPU</dt>
-            <dd id="sys-cpu">--</dd>
-            <dt>Memory</dt>
-            <dd id="sys-memory">--</dd>
-            <dt>Temperature</dt>
-            <dd id="sys-temp">--</dd>
-            <dt>Disk</dt>
-            <dd id="sys-disk">--</dd>
-            <dt>Network</dt>
-            <dd id="net-status">--</dd>
-            <dt>Latency</dt>
-            <dd id="net-latency">--</dd>
-        </dl>
-    </article>
+<!-- Stream metrics — card grid -->
+<div class="metric-cards">
+    <div class="metric-card">
+        <div class="metric-label">FPS</div>
+        <div class="metric-value" id="stream-fps">--</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Bitrate</div>
+        <div class="metric-value" id="stream-bitrate">--</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Speed</div>
+        <div class="metric-value" id="stream-speed">--</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Frames</div>
+        <div class="metric-value" id="stream-frames">--</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Restarts</div>
+        <div class="metric-value" id="stream-restarts">0</div>
+    </div>
 </div>
 
+<!-- System stats — compact rows -->
+<details open>
+    <summary><strong>System</strong></summary>
+    <div class="system-stats">
+        <div class="stat-row">
+            <span class="stat-label">CPU</span>
+            <span id="sys-cpu">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Memory</span>
+            <span id="sys-memory">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Temp</span>
+            <span id="sys-temp">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Disk</span>
+            <span id="sys-disk">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Network</span>
+            <span id="net-status">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Latency</span>
+            <span id="net-latency">--</span>
+        </div>
+    </div>
+</details>
+
 <div id="error-banner" class="hidden">
-    <article class="flash-error">
+    <article class="flash-error" role="alert">
         <strong>Error:</strong> <span id="error-text"></span>
     </article>
 </div>

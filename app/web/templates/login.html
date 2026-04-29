@@ -8,14 +8,19 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <main class="container" style="max-width: 400px; margin-top: 10vh;">
+    <main class="container login-container">
         <article>
-            <h2>Fish Camz</h2>
+            <div class="login-brand">
+                <h2>Fish Camz</h2>
+            </div>
+            {% if config and config.vessel and config.vessel.name %}
+            <p class="login-vessel">{{ config.vessel.name }}</p>
+            {% endif %}
 
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
             {% for category, message in messages %}
-            <p class="flash-{{ category }}">{{ message }}</p>
+            <p class="flash-{{ category }}" role="alert">{{ message }}</p>
             {% endfor %}
             {% endif %}
             {% endwith %}

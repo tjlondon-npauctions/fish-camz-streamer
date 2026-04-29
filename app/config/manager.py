@@ -1,9 +1,12 @@
+import copy
 import logging
 import os
 import secrets
 import shutil
 import tempfile
+import threading
 from pathlib import Path
+from typing import Optional, Tuple
 
 import yaml
 
@@ -14,6 +17,24 @@ DEFAULT_CONFIG = BASE_DIR / "config" / "default_config.yaml"
 DATA_DIR = BASE_DIR / "data"
 CONFIG_FILE = DATA_DIR / "config.yaml"
 CONFIG_BACKUP = DATA_DIR / "config.yaml.bak"
+
+# Cache the parsed+merged config keyed off (config.yaml mtime, default mtime).
+# load() is called on every Flask request and every heartbeat tick — without
+# this, each call parses two YAML files and runs a recursive merge.
+_cache_lock = threading.Lock()
+_cache: Optional[dict] = None
+_cache_key: Optional[Tuple[float, float]] = None
+
+
+def _file_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _current_cache_key() -> Tuple[float, float]:
+    return (_file_mtime(CONFIG_FILE), _file_mtime(DEFAULT_CONFIG))
 
 REQUIRED_FOR_RTMP = [
     ("camera", "rtsp_url"),
@@ -41,16 +62,29 @@ def _deep_merge(base: dict, override: dict) -> dict:
 def load() -> dict:
     """Load config from data/config.yaml, creating from defaults if needed.
 
+    Cached by file mtime so repeated calls (Flask request lifecycle,
+    heartbeat tick, etc.) don't re-parse YAML. The cache is invalidated
+    automatically when either file's mtime changes (incl. by save()).
+    Returns a deep copy so callers can mutate freely.
+
     If the config file is corrupted, attempts recovery from backup.
     """
+    global _cache, _cache_key
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     if not CONFIG_FILE.exists():
         shutil.copy2(DEFAULT_CONFIG, CONFIG_FILE)
 
+    # Fast path: mtimes unchanged since last load — return a copy of the cache
+    key = _current_cache_key()
+    with _cache_lock:
+        if _cache is not None and _cache_key == key:
+            return copy.deepcopy(_cache)
+
+    # Slow path: parse and merge
     config = _load_yaml(CONFIG_FILE)
 
-    # If corrupted, try backup
     if config is None:
         logger.warning("Config file corrupted, attempting recovery from backup...")
         if CONFIG_BACKUP.exists():
@@ -65,14 +99,18 @@ def load() -> dict:
             logger.error("No backup available. Resetting to defaults.")
             config = {}
 
-    # Merge any new default keys that don't exist in user config
     defaults = _load_yaml(DEFAULT_CONFIG) or {}
     config = _deep_merge(defaults, config)
 
-    # Auto-generate secret key if missing
     if not config.get("web", {}).get("secret_key"):
         config.setdefault("web", {})["secret_key"] = secrets.token_hex(32)
         save(config)
+        # save() invalidates the cache — recompute the key after the write
+        key = _current_cache_key()
+
+    with _cache_lock:
+        _cache = copy.deepcopy(config)
+        _cache_key = key
 
     return config
 
@@ -120,6 +158,15 @@ def save(config: dict) -> None:
         except OSError:
             pass
         raise
+
+    # Invalidate the load() cache so the next reader picks up the new state.
+    # The mtime comparison alone would also catch this, but explicit
+    # invalidation avoids any clock-skew or filesystem-mtime-resolution edge
+    # cases.
+    global _cache, _cache_key
+    with _cache_lock:
+        _cache = None
+        _cache_key = None
 
 
 def get(config: dict, section: str, key: str, default=None):

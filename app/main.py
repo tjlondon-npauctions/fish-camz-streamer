@@ -14,7 +14,6 @@ import threading
 from app.config import manager
 from app.network.monitor import NetworkMonitor
 from app.streaming.engine import StreamEngine
-from app.streaming.uploader import HLSUploader
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +36,12 @@ def main() -> None:
     shutdown_event = threading.Event()
     engine = None
     net_monitor = None
-    uploader = None
 
     def shutdown(signum, frame):
         logger.info("Received signal %d, shutting down...", signum)
         shutdown_event.set()
         if engine:
             engine.stop()
-        if uploader:
-            uploader.stop()
         if net_monitor:
             net_monitor.stop()
 
@@ -72,23 +68,8 @@ def main() -> None:
     # When network recovers from extended outage, restart the stream
     net_monitor.on_recovery(lambda: engine.restart())
 
-    # Start HLS uploader if in HLS mode
-    output_mode = manager.get(config, "output", "mode", "rtmp")
-    if output_mode == "hls":
-        bunny_zone = manager.get(config, "bunny", "storage_zone", "")
-        bunny_key = manager.get(config, "bunny", "api_key", "")
-        if bunny_zone and bunny_key:
-            uploader = HLSUploader(
-                segment_dir=manager.get(config, "hls", "segment_dir", "/run/rpie/hls"),
-                storage_zone=bunny_zone,
-                api_key=bunny_key,
-                region=manager.get(config, "bunny", "region", ""),
-                stream_path=manager.get(config, "bunny", "stream_path", "live"),
-                state_dir=state_dir,
-            )
-            uploader.start()
-        else:
-            logger.warning("HLS mode enabled but Bunny CDN not configured")
+    # The HLS uploader is owned by StreamEngine and starts/stops with the
+    # stream — see StreamEngine.start() in app/streaming/engine.py.
 
     # Start monitors
     net_monitor.start()

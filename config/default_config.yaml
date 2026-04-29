@@ -10,6 +10,7 @@ camera:
   username: ""
   password: ""
   transport: "tcp"            # tcp (recommended) or udp
+  last_probe: {}              # Cached probe summary {url, video_codec, resolution, framerate, can_copy}
 
 output:
   mode: "rtmp"                # "rtmp", "hls", or "both" (RTMP + HLS simultaneously)
@@ -75,6 +76,7 @@ backend:
 remote_access:
   enabled: false
   tunnel_token: ""            # from Cloudflare Zero Trust dashboard
+  tunnel_url: ""              # public URL of this Pi's tunnel e.g. https://vessel-name.fishcamz.com
 
 system:
   log_level: "INFO"

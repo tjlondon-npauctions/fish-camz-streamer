@@ -1,19 +1,22 @@
 #!/bin/bash
-# Configure static IP on a secondary ethernet interface for POE camera connection.
-#
-# This sets up a persistent NetworkManager connection so the USB ethernet
-# dongle (eth1) always gets 192.168.0.10/24 on boot — allowing the Pi
-# to reach a POE camera on that subnet.
+# Configure networking for a Fish Camz Pi:
+#   - Static IP on secondary ethernet (USB dongle) for POE camera
+#   - dnsmasq DHCP server so cameras get an IP automatically
+#   - GPS auto-detection and gpsd setup
 #
 # Usage: sudo ./scripts/setup-network.sh [interface] [ip_address]
 # Defaults: interface=eth1, ip=192.168.0.10/24
 #
-# Also enables gpsd for USB GPS dongles if a GPS device is detected.
+# This makes camera setup plug-and-play: plug a camera into the USB
+# ethernet adapter and it gets a DHCP lease, discoverable via ONVIF.
 
 set -e
 
 IFACE="${1:-eth1}"
 IP_ADDR="${2:-192.168.0.10/24}"
+# Extract base subnet for DHCP range (e.g. 192.168.0 from 192.168.0.10/24)
+SUBNET_BASE=$(echo "$IP_ADDR" | cut -d/ -f1 | sed 's/\.[0-9]*$//')
+NETMASK="255.255.255.0"
 
 echo "=========================================="
 echo "  Network Setup for Fish Camz"
@@ -28,7 +31,7 @@ fi
 
 # ── Static IP on secondary ethernet (for POE camera) ──
 
-echo "[1/3] Configuring static IP on $IFACE ($IP_ADDR)..."
+echo "[1/4] Configuring static IP on $IFACE ($IP_ADDR)..."
 
 if ! ip link show "$IFACE" &>/dev/null; then
     echo "  Warning: Interface $IFACE not found."
@@ -60,10 +63,44 @@ else
     echo "  Done: $IFACE has IP $(ip -4 addr show "$IFACE" | grep inet | awk '{print $2}')"
 fi
 
+# ── dnsmasq DHCP server for camera discovery ──
+
+echo ""
+echo "[2/4] Setting up DHCP server for camera auto-discovery..."
+
+if command -v dnsmasq &>/dev/null; then
+    echo "  dnsmasq already installed."
+else
+    echo "  Installing dnsmasq..."
+    apt-get update -qq
+    apt-get install -y -qq dnsmasq > /dev/null 2>&1
+fi
+
+DNSMASQ_CONF="/etc/dnsmasq.d/camera-dhcp.conf"
+cat > "$DNSMASQ_CONF" << EOF
+# DHCP server for camera on $IFACE
+# Managed by Fish Camz setup-network.sh — do not edit manually
+interface=$IFACE
+bind-interfaces
+
+# Disable DNS (we only need DHCP)
+port=0
+
+# DHCP range: .50 to .150, 24h lease
+dhcp-range=${SUBNET_BASE}.50,${SUBNET_BASE}.150,${NETMASK},24h
+
+# Log DHCP events for debugging
+log-dhcp
+EOF
+
+systemctl enable dnsmasq > /dev/null 2>&1
+systemctl restart dnsmasq
+echo "  dnsmasq configured: DHCP range ${SUBNET_BASE}.50-150 on $IFACE"
+
 # ── GPS setup ──
 
 echo ""
-echo "[2/3] Checking for GPS device..."
+echo "[3/4] Checking for GPS device..."
 
 GPS_DEV=""
 for dev in /dev/ttyACM* /dev/ttyUSB*; do
@@ -102,7 +139,7 @@ fi
 # ── Summary ──
 
 echo ""
-echo "[3/3] Verifying configuration..."
+echo "[4/4] Verifying configuration..."
 echo ""
 echo "  Network interfaces:"
 ip -brief addr show | grep -v "lo\|docker\|br-\|veth" | while read -r line; do
@@ -117,6 +154,15 @@ nmcli -t -f NAME,AUTOCONNECT connection show | while IFS=: read -r name auto; do
     fi
 done
 
+echo ""
+echo "  DHCP server: dnsmasq on $IFACE (${SUBNET_BASE}.50-150)"
+
+if systemctl is-active dnsmasq > /dev/null 2>&1; then
+    echo "  dnsmasq status: running"
+else
+    echo "  WARNING: dnsmasq is not running! Check: journalctl -u dnsmasq"
+fi
+
 if [[ -n "$GPS_DEV" ]]; then
     echo ""
     echo "  GPS: $GPS_DEV via gpsd"
@@ -128,6 +174,7 @@ echo "  Network setup complete!"
 echo "=========================================="
 echo ""
 echo "  These settings persist across reboots."
-echo "  Camera subnet: $(echo "$IP_ADDR" | cut -d/ -f1 | sed 's/\.[0-9]*$/.x/')"
+echo "  Camera subnet: ${SUBNET_BASE}.x"
 echo "  Pi address on camera network: $(echo "$IP_ADDR" | cut -d/ -f1)"
+echo "  Cameras plugged in will get an IP via DHCP automatically."
 echo ""

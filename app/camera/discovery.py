@@ -274,31 +274,62 @@ def get_channel_urls(
     return candidates
 
 
-def get_common_rtsp_urls(ip: str, username: str = "", password: str = "") -> list[str]:
+def get_common_rtsp_urls(
+    ip: str,
+    username: str = "",
+    password: str = "",
+    brand: Optional[str] = None,
+) -> list[str]:
     """Generate common RTSP URL patterns to try for a given camera IP.
 
-    Different manufacturers use different RTSP paths. This returns a list
-    of the most common patterns to try via ffprobe.
+    If *brand* is known (from ONVIF metadata), that brand's URLs are placed
+    first so the caller finds a working stream faster.
     """
     auth = f"{username}:{password}@" if username else ""
     base = f"rtsp://{auth}{ip}"
 
-    return [
-        # Uniview camera / NVR (channels 1-4)
-        f"{base}:554/unicast/c1/s0/live", # Uniview ch1 main stream
-        f"{base}:554/unicast/c1/s1/live", # Uniview ch1 sub stream
-        f"{base}:554/unicast/c2/s0/live", # Uniview ch2 main stream
-        f"{base}:554/unicast/c3/s0/live", # Uniview ch3 main stream
-        f"{base}:554/unicast/c4/s0/live", # Uniview ch4 main stream
-        # Other brands
-        f"{base}:554/stream1",            # Generic
-        f"{base}:554/cam/realmonitor?channel=1&subtype=0",  # Dahua
-        f"{base}:554/Streaming/Channels/101",  # Hikvision main
-        f"{base}:554/Streaming/Channels/102",  # Hikvision sub
-        f"{base}:554/live/ch00_1",        # TVT / generic
-        f"{base}:554/h264Preview_01_main", # Amcrest
-        f"{base}:554/media/video1",       # Axis
-        f"{base}:554/videoMain",          # Foscam
-        f"{base}:554/1",                  # Reolink
-        f"{base}:554/",                   # Fallback
+    # Brand-specific URL lists (main stream first, then sub)
+    brand_urls = {
+        "uniview": [
+            f"{base}:554/unicast/c1/s0/live",
+            f"{base}:554/unicast/c1/s1/live",
+        ],
+        "hikvision": [
+            f"{base}:554/Streaming/Channels/101",
+            f"{base}:554/Streaming/Channels/102",
+        ],
+        "dahua": [
+            f"{base}:554/cam/realmonitor?channel=1&subtype=0",
+            f"{base}:554/cam/realmonitor?channel=1&subtype=1",
+        ],
+        "reolink": [
+            f"{base}:554/h264Preview_01_main",
+            f"{base}:554/h264Preview_01_sub",
+        ],
+    }
+
+    generic_urls = [
+        f"{base}:554/stream1",
+        f"{base}:554/live/ch00_1",
+        f"{base}:554/media/video1",
+        f"{base}:554/videoMain",
+        f"{base}:554/1",
+        f"{base}:554/",
     ]
+
+    # Start with the detected brand's URLs, then other brands, then generic
+    result: list[str] = []
+    if brand and brand in brand_urls:
+        result.extend(brand_urls[brand])
+
+    for b, urls in brand_urls.items():
+        if b != brand:
+            for url in urls:
+                if url not in result:
+                    result.append(url)
+
+    for url in generic_urls:
+        if url not in result:
+            result.append(url)
+
+    return result

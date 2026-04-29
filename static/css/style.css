@@ -1,12 +1,12 @@
-/* Fish Camz custom styles */
+/* Fish Camz — RPie-streamer UI */
 
 /* ---- Status indicators ---- */
 .indicator {
     display: inline-block;
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
-    margin-right: 8px;
+    margin-right: 6px;
     vertical-align: middle;
 }
 
@@ -27,10 +27,13 @@
 
 /* ---- Status banner ---- */
 .status-banner {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
     padding: 0.75rem 1rem;
     border-radius: var(--pico-border-radius);
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
     border: 1px solid;
     transition: background-color 0.3s, border-color 0.3s;
 }
@@ -67,6 +70,10 @@
     color: #3b82f6;
     border-left: 4px solid #3b82f6;
     padding: 0.75rem 1rem;
+}
+
+[role="alert"] {
+    margin-bottom: 1rem;
 }
 
 /* ---- Toast notifications ---- */
@@ -114,11 +121,37 @@
     border-left: 4px solid #3b82f6;
 }
 
-/* ---- Navigation active state ---- */
+/* ---- Navigation ---- */
 nav a[aria-current="page"] {
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: 4px;
+}
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.nav-vessel-name {
+    opacity: 0.5;
+    font-weight: 400;
+    font-size: 0.85rem;
+}
+
+.nav-status {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #ef4444;
+    box-shadow: 0 0 4px #ef4444;
+}
+
+.nav-status.online {
+    background-color: #22c55e;
+    box-shadow: 0 0 4px #22c55e;
 }
 
 /* ---- Text colors ---- */
@@ -126,6 +159,81 @@ nav a[aria-current="page"] {
 .text-error { color: #ef4444; }
 .text-warning { color: #f59e0b; }
 .text-muted { opacity: 0.6; }
+
+/* ---- Dashboard ---- */
+.dash-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.dash-header h2 {
+    margin: 0;
+}
+
+.dash-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.dash-controls button {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    margin: 0;
+}
+
+.metric-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.metric-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--pico-border-radius);
+    padding: 0.75rem;
+    text-align: center;
+}
+
+.metric-card .metric-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.5;
+    margin-bottom: 0.25rem;
+}
+
+.metric-card .metric-value {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.system-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    font-size: 0.85rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.stat-row:last-child {
+    border-bottom: none;
+}
+
+.stat-label {
+    opacity: 0.5;
+}
 
 /* ---- Log viewer ---- */
 .log-viewer {
@@ -169,24 +277,171 @@ nav a[aria-current="page"] {
     text-decoration: line-through;
 }
 
+/* ---- Settings — collapsible sections ---- */
+.settings-section {
+    margin-bottom: 0;
+}
+
+.settings-section summary {
+    font-weight: 600;
+    font-size: 1rem;
+    padding: 0.75rem 0;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.settings-section summary::after {
+    content: '\25B6';
+    font-size: 0.7rem;
+    opacity: 0.4;
+    transition: transform 0.2s;
+}
+
+.settings-section[open] summary::after {
+    transform: rotate(90deg);
+}
+
+.settings-section .settings-body {
+    padding-bottom: 1rem;
+}
+
+/* ---- Login page ---- */
+.login-container {
+    max-width: 360px;
+    margin: 15vh auto 0;
+    padding: 0 1rem;
+}
+
+.login-brand {
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.login-brand h2 {
+    margin-bottom: 0.25rem;
+}
+
+.login-vessel {
+    text-align: center;
+    opacity: 0.5;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ---- Camera setup steps ---- */
+.cam-step {
+    margin-bottom: 1.5rem;
+}
+
+.cam-step > strong:first-child {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.cam-device {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.cam-device-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.cam-device-meta {
+    flex: 1;
+    min-width: 0;
+}
+
+.cam-device-meta small {
+    opacity: 0.6;
+}
+
+.cam-device button {
+    margin: 0;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.85em;
+    width: auto;
+}
+
+.cam-device-channels {
+    margin-top: 0.75rem;
+    border-top: 1px solid var(--pico-muted-border-color);
+    padding-top: 0.75rem;
+}
+
+.cam-device-channels table {
+    margin: 0;
+    font-size: 0.85em;
+}
+
+.cam-device-channels td,
+.cam-device-channels th {
+    padding: 0.35rem 0.5rem;
+}
+
+.selected-card {
+    border: 1px solid #2d6a4f;
+    background: rgba(45, 106, 79, 0.1);
+    border-radius: 6px;
+    padding: 0.85rem 1rem;
+    margin: 1rem 0;
+}
+
+.selected-card .selected-summary {
+    display: block;
+    margin-bottom: 0.4rem;
+}
+
+.selected-card code {
+    display: block;
+    font-size: 0.8em;
+    word-break: break-all;
+    margin: 0.4rem 0;
+    padding: 0.35rem 0.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.selected-card .selected-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.selected-card .selected-actions button {
+    margin: 0;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.85em;
+    width: auto;
+}
+
+.cam-fallback,
+.cam-advanced {
+    margin-top: 1rem;
+}
+
+.cam-fallback summary,
+.cam-advanced summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+    opacity: 0.85;
+    padding: 0.4rem 0;
+}
+
 /* ---- Utility ---- */
 .hidden {
     display: none !important;
 }
 
-/* ---- Dashboard description lists ---- */
-dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.25rem 1rem;
-}
-
-dt {
-    font-weight: 600;
-    opacity: 0.7;
-}
-
-/* ---- Version ---- */
 .version-text {
     text-align: center;
     opacity: 0.3;
@@ -194,7 +449,59 @@ dt {
     margin-top: 2rem;
 }
 
+/* ---- Legacy dl support (help page tables etc) ---- */
+.help-content dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.25rem 1rem;
+}
+
+.help-content dt {
+    font-weight: 600;
+    opacity: 0.7;
+}
+
+/* ---- Tables — horizontal scroll on mobile ---- */
+.table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 /* ---- Responsive ---- */
+@media (max-width: 768px) {
+    .metric-cards {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .system-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .dash-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+
+    .dash-controls {
+        justify-content: stretch;
+    }
+
+    .dash-controls button {
+        flex: 1;
+    }
+
+    /* Nav stacks on small screens */
+    nav ul:last-child {
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+
+    nav ul:last-child li {
+        font-size: 0.85rem;
+    }
+}
+
 @media (max-width: 576px) {
     .setup-steps {
         flex-direction: column;
@@ -212,5 +519,13 @@ dt {
 
     .toast {
         max-width: none;
+    }
+
+    .metric-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .login-container {
+        margin-top: 8vh;
     }
 }

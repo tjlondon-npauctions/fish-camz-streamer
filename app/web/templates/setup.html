@@ -59,41 +59,85 @@
 
         {% elif step == 2 %}
         <!-- Step 2: Camera -->
+        {% set last_probe = config.camera.get('last_probe', {}) if config.camera else {} %}
+        {% set has_probe = last_probe and last_probe.get('url') == config.camera.rtsp_url %}
         <article>
             <header><strong>Camera Setup</strong></header>
             <form method="post">
                 <input type="hidden" name="step" value="2">
 
-                <label for="rtsp_url">Camera RTSP URL</label>
-                <div role="group">
-                    <input type="text" id="rtsp_url" name="rtsp_url"
-                           value="{{ config.camera.rtsp_url or '' }}"
-                           placeholder="rtsp://192.168.1.100:554/stream1">
-                    <button type="button" class="outline" onclick="scanCameras()">Scan</button>
-                </div>
-                <div id="scan-results" class="hidden"></div>
+                <input type="hidden" id="probed_url" name="probed_url"
+                       value="{{ last_probe.url or '' }}">
+                <input type="hidden" id="probed_codec" name="probed_codec"
+                       value="{{ last_probe.video_codec or '' }}">
+                <input type="hidden" id="probed_resolution" name="probed_resolution"
+                       value="{{ last_probe.resolution or '' }}">
+                <input type="hidden" id="probed_framerate" name="probed_framerate"
+                       value="{{ last_probe.framerate or '' }}">
+                <input type="hidden" id="probed_can_copy" name="probed_can_copy"
+                       value="{{ '1' if last_probe.can_copy else '' }}">
 
-                <details>
-                    <summary>Camera Credentials (if required)</summary>
+                <!-- 1. Credentials -->
+                <div class="cam-step">
+                    <strong>1. Camera login</strong>
                     <div class="grid">
                         <div>
                             <label for="cam_username">Username</label>
                             <input type="text" id="cam_username" name="cam_username"
+                                   value="{{ config.camera.username or '' }}"
                                    placeholder="admin">
                         </div>
                         <div>
                             <label for="cam_password">Password</label>
-                            <input type="password" id="cam_password" name="cam_password">
+                            <input type="password" id="cam_password" name="cam_password"
+                                   placeholder="{{ '(saved)' if config.camera.password else '' }}">
                         </div>
                     </div>
+                    <p><small>Most IP cameras need a login. Try <code>admin</code> with no password if you've never set one.</small></p>
+                </div>
+
+                <!-- 2. Find your camera -->
+                <div class="cam-step">
+                    <strong>2. Find your camera</strong>
+                    <p><small>Make sure the credentials above are filled in first.</small></p>
+                    <button type="button" class="outline" onclick="scanCameras()">
+                        Scan network for cameras
+                    </button>
+                    <div id="scan-results" class="hidden" style="margin-top:0.75rem"></div>
+                </div>
+
+                <!-- Selected card -->
+                <div id="selected-camera" class="selected-card{% if not config.camera.rtsp_url %} hidden{% endif %}">
+                    <strong class="selected-summary">
+                        {% if has_probe %}
+                        ✓ Selected: {{ last_probe.video_codec | upper }}
+                        {{ last_probe.resolution }}
+                        @ {{ last_probe.framerate | round(0) | int }}fps
+                        {% else %}
+                        ✓ Camera saved
+                        {% endif %}
+                    </strong>
+                    {% if has_probe %}
+                    <small>{{ 'Codec passthrough OK (low CPU)' if last_probe.can_copy else 'Will transcode on the Pi (higher CPU)' }}</small>
+                    {% endif %}
+                    <code id="selected-url">{{ config.camera.rtsp_url or '' }}</code>
+                    <div class="selected-actions">
+                        <button type="button" class="outline secondary" onclick="probeCamera()">Re-test</button>
+                        <button type="button" class="outline secondary" onclick="clearSelectedCamera()">Change</button>
+                    </div>
+                </div>
+
+                <!-- Manual fallback -->
+                <details class="cam-fallback"{% if not config.camera.rtsp_url %} open{% endif %}>
+                    <summary>Enter RTSP URL manually</summary>
+                    <p><small>Use this if your camera isn't detected by network scan.</small></p>
+                    <input type="text" id="rtsp_url" name="rtsp_url"
+                           value="{{ config.camera.rtsp_url or '' }}"
+                           placeholder="rtsp://192.168.1.100:554/stream1">
+                    <button type="button" class="outline" onclick="probeCamera()">Test connection</button>
                 </details>
 
-                <button type="button" class="outline" onclick="probeCamera()" style="margin-bottom:1rem">
-                    Test Connection
-                </button>
-                <div id="probe-results" class="hidden"></div>
-
-                <button type="submit">Next: Cloudflare Setup</button>
+                <button type="submit" style="margin-top:1rem">Next: Cloudflare Setup</button>
             </form>
         </article>
 
@@ -104,183 +148,8 @@
             p.textContent = text;
             el.appendChild(p);
         }
-
-        function scanCameras() {
-            var div = document.getElementById('scan-results');
-            div.className = '';
-            div.innerHTML = '<p aria-busy="true">Scanning...</p>';
-            fetch('/api/cameras/scan')
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    div.innerHTML = '';
-                    if (data.cameras && data.cameras.length > 0) {
-                        var heading = document.createElement('p');
-                        heading.textContent = 'Found ' + data.cameras.length + ' device(s):';
-                        div.appendChild(heading);
-                        var ul = document.createElement('ul');
-                        data.cameras.forEach(function(cam) {
-                            var li = document.createElement('li');
-                            var isNvr = cam.device_type === 'nvr';
-
-                            // Device name + type badge
-                            var label = document.createElement('strong');
-                            label.textContent = cam.name + ' (' + cam.ip + ')';
-                            li.appendChild(label);
-
-                            if (isNvr) {
-                                var badge = document.createElement('small');
-                                badge.textContent = ' NVR';
-                                badge.style.cssText = 'background:#e67e22;color:#fff;padding:1px 6px;border-radius:4px;margin-left:6px;font-size:0.75em';
-                                li.appendChild(badge);
-                            }
-                            if (cam.hardware) {
-                                var hw = document.createElement('small');
-                                hw.textContent = ' ' + cam.hardware;
-                                hw.style.opacity = '0.6';
-                                li.appendChild(hw);
-                            }
-
-                            // Action buttons
-                            var actions = document.createElement('div');
-                            actions.style.marginTop = '4px';
-
-                            if (isNvr) {
-                                var findBtn = document.createElement('button');
-                                findBtn.type = 'button';
-                                findBtn.className = 'outline';
-                                findBtn.textContent = 'Find Channels';
-                                findBtn.style.cssText = 'padding:4px 12px;font-size:0.85em;margin-right:8px';
-                                findBtn.addEventListener('click', (function(c) {
-                                    return function(e) {
-                                        e.preventDefault();
-                                        detectChannels(c);
-                                    };
-                                })(cam));
-                                actions.appendChild(findBtn);
-                            }
-
-                            var useBtn = document.createElement('a');
-                            useBtn.href = '#';
-                            useBtn.textContent = isNvr ? 'Use raw address' : 'Use this camera';
-                            useBtn.style.fontSize = '0.85em';
-                            useBtn.addEventListener('click', (function(c) {
-                                return function(e) {
-                                    e.preventDefault();
-                                    document.getElementById('rtsp_url').value = c.xaddrs;
-                                };
-                            })(cam));
-                            actions.appendChild(useBtn);
-
-                            li.appendChild(actions);
-
-                            // Channel results container (for NVR)
-                            var chDiv = document.createElement('div');
-                            chDiv.id = 'channels-' + cam.ip.replace(/\./g, '-');
-                            li.appendChild(chDiv);
-
-                            ul.appendChild(li);
-                        });
-                        div.appendChild(ul);
-                    } else {
-                        setText(div, 'No cameras found. Enter the RTSP URL manually.');
-                    }
-                })
-                .catch(function() { setText(div, 'Scan failed.'); });
-        }
-
-        function detectChannels(cam) {
-            var divId = 'channels-' + cam.ip.replace(/\./g, '-');
-            var div = document.getElementById(divId);
-            div.innerHTML = '<p aria-busy="true">Probing channels (this may take a moment)...</p>';
-
-            var username = document.getElementById('cam_username') ? document.getElementById('cam_username').value : '';
-            var password = document.getElementById('cam_password') ? document.getElementById('cam_password').value : '';
-
-            fetch('/api/camera/detect-channels', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    ip: cam.ip,
-                    username: username,
-                    password: password,
-                    hardware: cam.hardware || '',
-                    name: cam.name || '',
-                    scopes: cam.scopes || ''
-                })
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                div.innerHTML = '';
-                if (data.channels && data.channels.length > 0) {
-                    if (data.brand) {
-                        var brandP = document.createElement('p');
-                        brandP.innerHTML = '<small>Detected brand: <strong>' + data.brand + '</strong></small>';
-                        div.appendChild(brandP);
-                    }
-                    var table = document.createElement('table');
-                    table.style.fontSize = '0.85em';
-                    var thead = document.createElement('thead');
-                    thead.innerHTML = '<tr><th>Ch</th><th>Quality</th><th>Resolution</th><th>Codec</th><th></th></tr>';
-                    table.appendChild(thead);
-                    var tbody = document.createElement('tbody');
-                    data.channels.forEach(function(ch) {
-                        var tr = document.createElement('tr');
-                        var tdCh = document.createElement('td');
-                        tdCh.textContent = ch.channel;
-                        var tdQ = document.createElement('td');
-                        tdQ.textContent = ch.quality === 'main' ? 'Main' : 'Sub';
-                        var tdRes = document.createElement('td');
-                        tdRes.textContent = ch.resolution + ' @ ' + ch.framerate + 'fps';
-                        var tdCodec = document.createElement('td');
-                        tdCodec.textContent = ch.video_codec + (ch.can_copy ? '' : ' (transcode)');
-                        var tdBtn = document.createElement('td');
-                        var btn = document.createElement('a');
-                        btn.href = '#';
-                        btn.textContent = 'Select';
-                        btn.addEventListener('click', (function(url) {
-                            return function(e) {
-                                e.preventDefault();
-                                document.getElementById('rtsp_url').value = url;
-                            };
-                        })(ch.url));
-                        tdBtn.appendChild(btn);
-                        tr.appendChild(tdCh);
-                        tr.appendChild(tdQ);
-                        tr.appendChild(tdRes);
-                        tr.appendChild(tdCodec);
-                        tr.appendChild(tdBtn);
-                        tbody.appendChild(tr);
-                    });
-                    table.appendChild(tbody);
-                    div.appendChild(table);
-                } else {
-                    setText(div, 'No active channels found. Try entering credentials above, or enter the RTSP URL manually.');
-                }
-            })
-            .catch(function() { setText(div, 'Channel detection failed.'); });
-        }
-
-        function probeCamera() {
-            var url = document.getElementById('rtsp_url').value;
-            if (!url) { alert('Enter an RTSP URL first.'); return; }
-            var div = document.getElementById('probe-results');
-            div.className = '';
-            div.innerHTML = '<p aria-busy="true">Testing...</p>';
-            fetch('/api/camera/probe?url=' + encodeURIComponent(url))
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data.error) {
-                        setText(div, 'Failed: ' + data.error);
-                    } else {
-                        var msg = 'Connected! ' + data.video_codec + ' ' + data.resolution +
-                            ' @ ' + data.framerate + 'fps' +
-                            (data.can_copy ? ' (passthrough OK)' : ' (will transcode)');
-                        setText(div, msg);
-                    }
-                })
-                .catch(function() { setText(div, 'Test failed.'); });
-        }
         </script>
+        <script src="{{ url_for('static', filename='js/camera-scan.js') }}"></script>
 
         {% elif step == 3 %}
         <!-- Step 3: Output -->

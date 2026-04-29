@@ -10,13 +10,21 @@
 <body>
     <nav class="container-fluid">
         <ul>
-            <li><strong>Fish Camz</strong>{% if config and config.vessel and config.vessel.name %} <small>&mdash; {{ config.vessel.name }}</small>{% endif %}</li>
+            <li>
+                <span class="nav-brand">
+                    <strong>Fish Camz</strong>
+                    {% if config and config.vessel and config.vessel.name %}
+                    <span class="nav-vessel-name">{{ config.vessel.name }}</span>
+                    {% endif %}
+                    <span id="nav-status" class="nav-status" title="Stream offline"></span>
+                </span>
+            </li>
         </ul>
         <ul>
             <li><a href="{{ url_for('routes.dashboard') }}" {% if request.endpoint == 'routes.dashboard' %}aria-current="page"{% endif %}>Dashboard</a></li>
             <li><a href="{{ url_for('routes.settings') }}" {% if request.endpoint == 'routes.settings' %}aria-current="page"{% endif %}>Settings</a></li>
             <li><a href="{{ url_for('routes.logs') }}" {% if request.endpoint == 'routes.logs' %}aria-current="page"{% endif %}>Logs</a></li>
-            <li><a href="{{ url_for('routes.help_page') }}" {% if request.endpoint == 'routes.help_page' %}aria-current="page"{% endif %}>Guide</a></li>
+            <li><a href="{{ url_for('routes.help_page') }}" {% if request.endpoint == 'routes.help_page' %}aria-current="page"{% endif %}>Help</a></li>
             <li><a href="{{ url_for('routes.logout') }}">Logout</a></li>
         </ul>
     </nav>
@@ -25,7 +33,7 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
         {% for category, message in messages %}
-        <article class="flash-{{ category }}">
+        <article class="flash-{{ category }}" role="alert">
             {{ message }}
         </article>
         {% endfor %}
@@ -40,5 +48,29 @@
     </footer>
 
     {% block scripts %}{% endblock %}
+
+    <script>
+    // Update nav status dot from stream status
+    (function() {
+        function updateNavStatus() {
+            fetch('/api/status')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var dot = document.getElementById('nav-status');
+                    if (!dot) return;
+                    if (data.running) {
+                        dot.className = 'nav-status online';
+                        dot.title = 'Stream live';
+                    } else {
+                        dot.className = 'nav-status';
+                        dot.title = 'Stream offline';
+                    }
+                })
+                .catch(function() {});
+        }
+        updateNavStatus();
+        setInterval(updateNavStatus, 10000);
+    })();
+    </script>
 </body>
 </html>

@@ -13,11 +13,17 @@ logger = logging.getLogger(__name__)
 # Raspberry Pi thermal zone
 THERMAL_ZONE = Path("/sys/class/thermal/thermal_zone0/temp")
 
+# Prime psutil's CPU sampler so the first non-blocking cpu_percent() call
+# has a baseline. Without this, the first reading is always 0.0.
+psutil.cpu_percent(interval=None)
+
 
 def get_system_stats() -> dict:
     """Collect current system statistics."""
     return {
-        "cpu_percent": psutil.cpu_percent(interval=0.5),
+        # interval=None reads the delta since the last call — non-blocking.
+        # Dashboard polls /api/system every 10s so the sample window is fine.
+        "cpu_percent": psutil.cpu_percent(interval=None),
         "memory": _memory_stats(),
         "disk": _disk_stats(),
         "temperature": _cpu_temperature(),

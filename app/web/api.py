@@ -253,15 +253,25 @@ def probe_camera():
 
 @api.route("/camera/common-urls")
 def common_urls():
-    """Get common RTSP URL patterns to try for a given IP."""
+    """Get common RTSP URL patterns to try for a given IP.
+
+    Accepts optional scopes/hardware/name params to detect brand and
+    prioritise brand-specific URLs (avoiding slow sequential probing).
+    """
     ip = request.args.get("ip", "")
     username = request.args.get("username", "")
     password = request.args.get("password", "")
     if not ip:
         return jsonify({"error": "Missing 'ip' parameter"}), 400
 
-    urls = get_common_rtsp_urls(ip, username, password)
-    return jsonify({"urls": urls})
+    # Detect brand from ONVIF metadata so we can put the right URLs first
+    hardware = request.args.get("hardware", "")
+    name = request.args.get("name", "")
+    scopes = request.args.get("scopes", "")
+    brand = detect_brand(hardware, name, scopes)
+
+    urls = get_common_rtsp_urls(ip, username, password, brand=brand)
+    return jsonify({"urls": urls, "brand": brand})
 
 
 @api.route("/camera/detect-channels", methods=["POST"])

@@ -6,209 +6,281 @@
 
 <form method="post">
     <!-- Vessel -->
-    <article>
-        <header><strong>Vessel</strong></header>
-        <label for="vessel_name">Vessel Name</label>
-        <input type="text" id="vessel_name" name="vessel_name"
-               value="{{ config.vessel.name or '' }}"
-               placeholder="e.g. FV Pacific Dawn">
-    </article>
+    <details class="settings-section" open>
+        <summary>Vessel</summary>
+        <div class="settings-body">
+            <label for="vessel_name">Vessel Name</label>
+            <input type="text" id="vessel_name" name="vessel_name"
+                   value="{{ config.vessel.name or '' }}"
+                   placeholder="e.g. FV Pacific Dawn">
+        </div>
+    </details>
+    <hr>
 
     <!-- Camera Settings -->
-    <article>
-        <header><strong>Camera</strong></header>
+    {% set last_probe = config.camera.get('last_probe', {}) if config.camera else {} %}
+    {% set has_probe = last_probe and last_probe.get('url') == config.camera.rtsp_url %}
+    <details class="settings-section" open>
+        <summary>Camera</summary>
+        <div class="settings-body">
 
-        <label for="rtsp_url">RTSP URL</label>
-        <div role="group">
-            <input type="text" id="rtsp_url" name="rtsp_url"
-                   value="{{ config.camera.rtsp_url or '' }}"
-                   placeholder="rtsp://192.168.1.100:554/unicast/c1/s0/live">
-            <button type="button" class="outline" onclick="scanCameras()">Scan Network</button>
-        </div>
-        <p><small>If you have an NVR, click "Scan Network" to find it, then "Find Channels" to see all connected cameras. NVR cameras use the NVR's IP, not the camera's own IP.</small></p>
-        <div id="scan-results" class="hidden"></div>
+            <!-- Hidden fields populated by camera-scan.js on a successful probe.
+                 Persisted on Save so the Selected card survives a reload. -->
+            <input type="hidden" id="probed_url" name="probed_url"
+                   value="{{ last_probe.url or '' }}">
+            <input type="hidden" id="probed_codec" name="probed_codec"
+                   value="{{ last_probe.video_codec or '' }}">
+            <input type="hidden" id="probed_resolution" name="probed_resolution"
+                   value="{{ last_probe.resolution or '' }}">
+            <input type="hidden" id="probed_framerate" name="probed_framerate"
+                   value="{{ last_probe.framerate or '' }}">
+            <input type="hidden" id="probed_can_copy" name="probed_can_copy"
+                   value="{{ '1' if last_probe.can_copy else '' }}">
 
-        <div class="grid">
-            <div>
-                <label for="cam_username">Camera Username</label>
-                <input type="text" id="cam_username" name="cam_username"
-                       value="{{ config.camera.username or '' }}"
-                       placeholder="admin">
+            <!-- 1. Credentials -->
+            <div class="cam-step">
+                <strong>1. Camera login</strong>
+                <div class="grid">
+                    <div>
+                        <label for="cam_username">Username</label>
+                        <input type="text" id="cam_username" name="cam_username"
+                               value="{{ config.camera.username or '' }}"
+                               placeholder="admin">
+                    </div>
+                    <div>
+                        <label for="cam_password">Password</label>
+                        <input type="password" id="cam_password" name="cam_password"
+                               placeholder="{{ '(saved)' if config.camera.password else '' }}">
+                    </div>
+                </div>
+                <p><small>Most IP cameras need a login. Try <code>admin</code> with no password if you've never set one.</small></p>
             </div>
-            <div>
-                <label for="cam_password">Camera Password</label>
-                <input type="password" id="cam_password" name="cam_password"
-                       placeholder="{{ '••••••••' if config.camera.password else '' }}">
+
+            <!-- 2. Find your camera -->
+            <div class="cam-step">
+                <strong>2. Find your camera</strong>
+                <p><small>Make sure the credentials above are filled in first — most cameras refuse the probe without them.</small></p>
+                <button type="button" class="outline" onclick="scanCameras()">
+                    Scan network for cameras
+                </button>
+                <div id="scan-results" class="hidden" style="margin-top:0.75rem"></div>
             </div>
+
+            <!-- Selected camera card -->
+            <div id="selected-camera" class="selected-card{% if not config.camera.rtsp_url %} hidden{% endif %}">
+                <strong class="selected-summary">
+                    {% if has_probe %}
+                    ✓ Selected: {{ last_probe.video_codec | upper }}
+                    {{ last_probe.resolution }}
+                    @ {{ last_probe.framerate | round(0) | int }}fps
+                    {% else %}
+                    ✓ Camera saved
+                    {% endif %}
+                </strong>
+                {% if has_probe %}
+                <small>{{ 'Codec passthrough OK (low CPU)' if last_probe.can_copy else 'Will transcode on the Pi (higher CPU)' }}</small>
+                {% endif %}
+                <code id="selected-url">{{ config.camera.rtsp_url or '' }}</code>
+                <div class="selected-actions">
+                    <button type="button" class="outline secondary" onclick="probeCamera()">Re-test</button>
+                    <button type="button" class="outline secondary" onclick="clearSelectedCamera()">Change</button>
+                </div>
+            </div>
+
+            <!-- Manual fallback (open if no URL set yet) -->
+            <details class="cam-fallback"{% if not config.camera.rtsp_url %} open{% endif %}>
+                <summary>Enter RTSP URL manually</summary>
+                <p><small>Use this if your camera isn't found by network scan, or you have a vendor URL from your installer.</small></p>
+                <input type="text" id="rtsp_url" name="rtsp_url"
+                       value="{{ config.camera.rtsp_url or '' }}"
+                       placeholder="rtsp://192.168.1.100:554/unicast/c1/s0/live">
+                <button type="button" class="outline" onclick="probeCamera()">Test connection</button>
+            </details>
+
+            <!-- Advanced -->
+            <details class="cam-advanced">
+                <summary>Advanced</summary>
+                <label for="transport">RTSP Transport</label>
+                <select id="transport" name="transport">
+                    <option value="tcp" {% if config.camera.transport == 'tcp' %}selected{% endif %}>TCP (Recommended)</option>
+                    <option value="udp" {% if config.camera.transport == 'udp' %}selected{% endif %}>UDP</option>
+                </select>
+                <p><small>Switch to UDP only if TCP causes stuttering on your network.</small></p>
+            </details>
         </div>
-
-        <label for="transport">RTSP Transport</label>
-        <select id="transport" name="transport">
-            <option value="tcp" {% if config.camera.transport == 'tcp' %}selected{% endif %}>TCP (Recommended)</option>
-            <option value="udp" {% if config.camera.transport == 'udp' %}selected{% endif %}>UDP</option>
-        </select>
-
-        <button type="button" class="outline" onclick="probeCamera()">Test Camera Connection</button>
-        <div id="probe-results" class="hidden"></div>
-    </article>
+    </details>
+    <hr>
 
     {% set output_mode = config.get('output', {}).get('mode', 'rtmp') %}
     {% set bunny = config.get('bunny', {}) %}
 
-    <!-- Output Mode -->
-    <article>
-        <header><strong>Output</strong></header>
+    <!-- Output Mode + CDN settings -->
+    <details class="settings-section" open>
+        <summary>Output</summary>
+        <div class="settings-body">
+            <label for="output_mode">Streaming Mode</label>
+            <select id="output_mode" name="output_mode" onchange="toggleOutputFields()">
+                <option value="rtmp" {% if output_mode == 'rtmp' %}selected{% endif %}>RTMP (Cloudflare Stream)</option>
+                <option value="hls" {% if output_mode == 'hls' %}selected{% endif %}>HLS (Bunny CDN)</option>
+            </select>
 
-        <label for="output_mode">Streaming Mode</label>
-        <select id="output_mode" name="output_mode" onchange="toggleOutputFields()">
-            <option value="rtmp" {% if output_mode == 'rtmp' %}selected{% endif %}>RTMP (Cloudflare Stream)</option>
-            <option value="hls" {% if output_mode == 'hls' %}selected{% endif %}>HLS (Bunny CDN)</option>
-        </select>
-    </article>
+            <!-- Cloudflare Settings (RTMP mode) -->
+            <div id="rtmp-settings" class="{% if output_mode == 'hls' %}hidden{% endif %}">
+                <label for="rtmps_url">RTMPS Endpoint</label>
+                <input type="text" id="rtmps_url" name="rtmps_url"
+                       value="{{ config.cloudflare.rtmps_url or '' }}"
+                       placeholder="rtmps://live.cloudflare.com:443/live/">
 
-    <!-- Cloudflare Settings (RTMP mode) -->
-    <article id="rtmp-settings" class="{% if output_mode == 'hls' %}hidden{% endif %}">
-        <header><strong>Cloudflare Stream</strong></header>
-
-        <label for="rtmps_url">RTMPS Endpoint</label>
-        <input type="text" id="rtmps_url" name="rtmps_url"
-               value="{{ config.cloudflare.rtmps_url or '' }}"
-               placeholder="rtmps://live.cloudflare.com:443/live/">
-
-        <label for="stream_key">Stream Key</label>
-        <input type="password" id="stream_key" name="stream_key"
-               placeholder="{{ '••••••••' if config.cloudflare.stream_key else 'Your Cloudflare stream key' }}">
-    </article>
-
-    <!-- Bunny CDN Settings (HLS mode) -->
-    <article id="hls-settings" class="{% if output_mode != 'hls' %}hidden{% endif %}">
-        <header><strong>Bunny CDN</strong></header>
-
-        <div class="grid">
-            <div>
-                <label for="bunny_storage_zone">Storage Zone</label>
-                <input type="text" id="bunny_storage_zone" name="bunny_storage_zone"
-                       value="{{ bunny.get('storage_zone', '') }}"
-                       placeholder="e.g. fish-camz">
+                <label for="stream_key">Stream Key</label>
+                <input type="password" id="stream_key" name="stream_key"
+                       placeholder="{{ '(set)' if config.cloudflare.stream_key else 'Your Cloudflare stream key' }}">
             </div>
-            <div>
-                <label for="bunny_region">Region</label>
-                <input type="text" id="bunny_region" name="bunny_region"
-                       value="{{ bunny.get('region', '') }}"
-                       placeholder="e.g. la, ny, sg (empty=default)">
+
+            <!-- Bunny CDN Settings (HLS mode) -->
+            <div id="hls-settings" class="{% if output_mode != 'hls' %}hidden{% endif %}">
+                <div class="grid">
+                    <div>
+                        <label for="bunny_storage_zone">Storage Zone</label>
+                        <input type="text" id="bunny_storage_zone" name="bunny_storage_zone"
+                               value="{{ bunny.get('storage_zone', '') }}"
+                               placeholder="e.g. fish-camz">
+                    </div>
+                    <div>
+                        <label for="bunny_region">Region</label>
+                        <input type="text" id="bunny_region" name="bunny_region"
+                               value="{{ bunny.get('region', '') }}"
+                               placeholder="e.g. la, ny, sg">
+                    </div>
+                </div>
+
+                <label for="bunny_api_key">Storage API Key</label>
+                <input type="password" id="bunny_api_key" name="bunny_api_key"
+                       placeholder="{{ '(set)' if bunny.get('api_key') else 'From Bunny dashboard' }}">
+
+                <label for="bunny_cdn_url">CDN URL (Pull Zone)</label>
+                <input type="text" id="bunny_cdn_url" name="bunny_cdn_url"
+                       value="{{ bunny.get('cdn_url', '') }}"
+                       placeholder="https://fish-camz.b-cdn.net">
+
+                <label for="bunny_stream_path">Stream Path</label>
+                <input type="text" id="bunny_stream_path" name="bunny_stream_path"
+                       value="{{ bunny.get('stream_path', 'live') }}"
+                       placeholder="live">
             </div>
         </div>
-
-        <label for="bunny_api_key">Storage API Key</label>
-        <input type="password" id="bunny_api_key" name="bunny_api_key"
-               placeholder="{{ '••••••••' if bunny.get('api_key') else 'From Bunny dashboard > Storage > API' }}">
-
-        <label for="bunny_cdn_url">CDN URL (Pull Zone)</label>
-        <input type="text" id="bunny_cdn_url" name="bunny_cdn_url"
-               value="{{ bunny.get('cdn_url', '') }}"
-               placeholder="https://fish-camz.b-cdn.net">
-
-        <label for="bunny_stream_path">Stream Path</label>
-        <input type="text" id="bunny_stream_path" name="bunny_stream_path"
-               value="{{ bunny.get('stream_path', 'live') }}"
-               placeholder="live">
-    </article>
+    </details>
+    <hr>
 
     <!-- Encoding Settings -->
-    <article>
-        <header><strong>Encoding</strong></header>
+    <details class="settings-section">
+        <summary>Encoding</summary>
+        <div class="settings-body">
+            <label for="encoding_mode">Mode</label>
+            <select id="encoding_mode" name="encoding_mode">
+                <option value="auto" {% if config.encoding.mode == 'auto' %}selected{% endif %}>Auto (copy if possible)</option>
+                <option value="copy" {% if config.encoding.mode == 'copy' %}selected{% endif %}>Copy (passthrough)</option>
+                <option value="transcode" {% if config.encoding.mode == 'transcode' %}selected{% endif %}>Transcode (re-encode)</option>
+            </select>
 
-        <label for="encoding_mode">Mode</label>
-        <select id="encoding_mode" name="encoding_mode">
-            <option value="auto" {% if config.encoding.mode == 'auto' %}selected{% endif %}>Auto (copy if possible)</option>
-            <option value="copy" {% if config.encoding.mode == 'copy' %}selected{% endif %}>Copy (passthrough)</option>
-            <option value="transcode" {% if config.encoding.mode == 'transcode' %}selected{% endif %}>Transcode (re-encode)</option>
-        </select>
+            <div class="grid">
+                <div>
+                    <label for="video_bitrate">Video Bitrate</label>
+                    <input type="text" id="video_bitrate" name="video_bitrate"
+                           value="{{ config.encoding.video_bitrate or '2500k' }}"
+                           placeholder="2500k">
+                </div>
+                <div>
+                    <label for="preset">Encoding Preset</label>
+                    <select id="preset" name="preset">
+                        <option value="ultrafast" {% if config.encoding.preset == 'ultrafast' %}selected{% endif %}>Ultrafast</option>
+                        <option value="veryfast" {% if config.encoding.preset == 'veryfast' %}selected{% endif %}>Very Fast</option>
+                        <option value="fast" {% if config.encoding.preset == 'fast' %}selected{% endif %}>Fast</option>
+                        <option value="medium" {% if config.encoding.preset == 'medium' %}selected{% endif %}>Medium</option>
+                    </select>
+                </div>
+            </div>
 
-        <div class="grid">
-            <div>
-                <label for="video_bitrate">Video Bitrate</label>
-                <input type="text" id="video_bitrate" name="video_bitrate"
-                       value="{{ config.encoding.video_bitrate or '2500k' }}"
-                       placeholder="2500k">
-            </div>
-            <div>
-                <label for="preset">Encoding Preset</label>
-                <select id="preset" name="preset">
-                    <option value="ultrafast" {% if config.encoding.preset == 'ultrafast' %}selected{% endif %}>Ultrafast</option>
-                    <option value="veryfast" {% if config.encoding.preset == 'veryfast' %}selected{% endif %}>Very Fast</option>
-                    <option value="fast" {% if config.encoding.preset == 'fast' %}selected{% endif %}>Fast</option>
-                    <option value="medium" {% if config.encoding.preset == 'medium' %}selected{% endif %}>Medium</option>
-                </select>
-            </div>
+            <label for="resolution">Resolution</label>
+            <select id="resolution" name="resolution">
+                <option value="source" {% if config.encoding.resolution == 'source' %}selected{% endif %}>Source (no scaling)</option>
+                <option value="1920x1080" {% if config.encoding.resolution == '1920x1080' %}selected{% endif %}>1920x1080</option>
+                <option value="1280x720" {% if config.encoding.resolution == '1280x720' %}selected{% endif %}>1280x720</option>
+                <option value="854x480" {% if config.encoding.resolution == '854x480' %}selected{% endif %}>854x480</option>
+            </select>
         </div>
-
-        <label for="resolution">Resolution</label>
-        <select id="resolution" name="resolution">
-            <option value="source" {% if config.encoding.resolution == 'source' %}selected{% endif %}>Source (no scaling)</option>
-            <option value="1920x1080" {% if config.encoding.resolution == '1920x1080' %}selected{% endif %}>1920x1080</option>
-            <option value="1280x720" {% if config.encoding.resolution == '1280x720' %}selected{% endif %}>1280x720</option>
-            <option value="854x480" {% if config.encoding.resolution == '854x480' %}selected{% endif %}>854x480</option>
-        </select>
-    </article>
+    </details>
+    <hr>
 
     <!-- Stream Behavior -->
-    <article>
-        <header><strong>Behavior</strong></header>
-
-        <label>
-            <input type="checkbox" name="auto_start" role="switch"
-                   {% if config.stream.auto_start %}checked{% endif %}>
-            Auto-start stream on boot
-        </label>
-    </article>
+    <details class="settings-section">
+        <summary>Behavior</summary>
+        <div class="settings-body">
+            <label>
+                <input type="checkbox" name="auto_start" role="switch"
+                       {% if config.stream.auto_start %}checked{% endif %}>
+                Auto-start stream on boot
+            </label>
+        </div>
+    </details>
+    <hr>
 
     <!-- Fishcamz Backend -->
-    <article>
-        <header><strong>Fishcamz Backend</strong></header>
-        <p><small>Connect this vessel to the Fishcamz platform. The registration token is generated
-           when you create the vessel in the <a href="{{ config.get('backend', {}).get('url', '') or '#' }}" target="_blank">admin dashboard</a>.</small></p>
+    <details class="settings-section">
+        <summary>Fishcamz Backend</summary>
+        <div class="settings-body">
+            <p><small>Connect this vessel to the Fishcamz platform. The registration token is generated
+               when you create the vessel in the <a href="{{ config.get('backend', {}).get('url', '') or '#' }}" target="_blank">admin dashboard</a>.</small></p>
 
-        {% set backend = config.get('backend', {}) %}
+            {% set backend = config.get('backend', {}) %}
 
-        <label for="backend_url">Backend URL</label>
-        <input type="text" id="backend_url" name="backend_url"
-               value="{{ backend.get('url', '') }}"
-               placeholder="https://fishcamz.com">
+            <label for="backend_url">Backend URL</label>
+            <input type="text" id="backend_url" name="backend_url"
+                   value="{{ backend.get('url', '') }}"
+                   placeholder="https://fishcamz.com">
 
-        <label for="vessel_api_key">Registration Token</label>
-        <input type="password" id="vessel_api_key" name="vessel_api_key"
-               placeholder="{{ '••••••••' if backend.get('vessel_api_key') else 'Paste token from admin dashboard' }}">
+            <label for="vessel_api_key">Registration Token</label>
+            <input type="password" id="vessel_api_key" name="vessel_api_key"
+                   placeholder="{{ '(set)' if backend.get('vessel_api_key') else 'Paste token from admin dashboard' }}">
 
-        <label for="heartbeat_interval">Heartbeat Interval (seconds)</label>
-        <input type="number" id="heartbeat_interval" name="heartbeat_interval"
-               value="{{ backend.get('heartbeat_interval', 60) }}"
-               min="10" max="300" step="1">
+            <label for="heartbeat_interval">Heartbeat Interval (seconds)</label>
+            <input type="number" id="heartbeat_interval" name="heartbeat_interval"
+                   value="{{ backend.get('heartbeat_interval', 60) }}"
+                   min="10" max="300" step="1">
 
-        <button type="button" class="outline" onclick="testBackend()">Test Connection</button>
-        <div id="backend-test-results" class="hidden"></div>
-    </article>
+            <button type="button" class="outline" onclick="testBackend()">Test Connection</button>
+            <div id="backend-test-results" class="hidden"></div>
+        </div>
+    </details>
+    <hr>
 
     <!-- Remote Access -->
-    <article>
-        <header><strong>Remote Access</strong></header>
-        <p><small>Access this dashboard from anywhere using a Cloudflare Tunnel.
-           Set up a tunnel in <a href="https://one.dash.cloudflare.com/" target="_blank">Cloudflare Zero Trust</a>,
-           then paste the tunnel token below.</small></p>
+    <details class="settings-section">
+        <summary>Remote Access</summary>
+        <div class="settings-body">
+            <p><small>Access this dashboard from anywhere using a Cloudflare Tunnel.
+               Set up a tunnel in <a href="https://one.dash.cloudflare.com/" target="_blank">Cloudflare Zero Trust</a>,
+               then paste the tunnel token below.</small></p>
 
-        <label>
-            <input type="checkbox" name="remote_enabled" role="switch"
-                   {% if config.remote_access and config.remote_access.enabled %}checked{% endif %}>
-            Enable remote access
-        </label>
+            <label>
+                <input type="checkbox" name="remote_enabled" role="switch"
+                       {% if config.remote_access and config.remote_access.enabled %}checked{% endif %}>
+                Enable remote access
+            </label>
 
-        <label for="tunnel_token">Tunnel Token</label>
-        <input type="password" id="tunnel_token" name="tunnel_token"
-               placeholder="{{ '••••••••' if config.remote_access and config.remote_access.tunnel_token else 'eyJ...' }}">
-    </article>
+            <label for="tunnel_token">Tunnel Token</label>
+            <input type="password" id="tunnel_token" name="tunnel_token"
+                   placeholder="{{ '(set)' if config.remote_access and config.remote_access.tunnel_token else 'eyJ...' }}">
+
+            <label for="tunnel_url">Tunnel URL</label>
+            <input type="text" id="tunnel_url" name="tunnel_url"
+                   value="{{ config.remote_access.tunnel_url if config.remote_access and config.remote_access.tunnel_url else '' }}"
+                   placeholder="https://vessel-name.fishcamz.com">
+            <p><small>Public URL for this tunnel. Used by the backend for remote commands (stream start/stop).</small></p>
+        </div>
+    </details>
 
     <!-- Save -->
-    <div role="group">
+    <div role="group" style="margin-top: 1.5rem;">
         <button type="submit">Save Settings</button>
         <button type="submit" name="restart_stream" value="1" class="outline">Save &amp; Restart Stream</button>
     </div>
@@ -229,162 +301,9 @@ function setText(el, text) {
     p.textContent = text;
     el.appendChild(p);
 }
-
-function scanCameras() {
-    var div = document.getElementById('scan-results');
-    div.className = '';
-    div.innerHTML = '<p aria-busy="true">Scanning network for cameras...</p>';
-
-    fetch('/api/cameras/scan')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            div.innerHTML = '';
-            if (data.cameras && data.cameras.length > 0) {
-                var heading = document.createElement('p');
-                heading.textContent = 'Found ' + data.cameras.length + ' device(s):';
-                div.appendChild(heading);
-                var ul = document.createElement('ul');
-                data.cameras.forEach(function(cam) {
-                    var li = document.createElement('li');
-                    var isNvr = cam.device_type === 'nvr';
-
-                    var label = document.createElement('strong');
-                    label.textContent = cam.name + ' (' + cam.ip + ')';
-                    li.appendChild(label);
-
-                    if (isNvr) {
-                        var badge = document.createElement('small');
-                        badge.textContent = ' NVR';
-                        badge.style.cssText = 'background:#e67e22;color:#fff;padding:1px 6px;border-radius:4px;margin-left:6px;font-size:0.75em';
-                        li.appendChild(badge);
-                    }
-                    if (cam.hardware) {
-                        var hw = document.createElement('small');
-                        hw.textContent = ' ' + cam.hardware;
-                        hw.style.opacity = '0.6';
-                        li.appendChild(hw);
-                    }
-
-                    var actions = document.createElement('div');
-                    actions.style.marginTop = '4px';
-
-                    if (isNvr) {
-                        var findBtn = document.createElement('button');
-                        findBtn.type = 'button';
-                        findBtn.className = 'outline';
-                        findBtn.textContent = 'Find Channels';
-                        findBtn.style.cssText = 'padding:4px 12px;font-size:0.85em;margin-right:8px';
-                        findBtn.addEventListener('click', (function(c) {
-                            return function(e) {
-                                e.preventDefault();
-                                detectChannels(c);
-                            };
-                        })(cam));
-                        actions.appendChild(findBtn);
-                    }
-
-                    var useBtn = document.createElement('a');
-                    useBtn.href = '#';
-                    useBtn.textContent = isNvr ? 'Use raw address' : 'Use this camera';
-                    useBtn.style.fontSize = '0.85em';
-                    useBtn.addEventListener('click', (function(c) {
-                        return function(e) {
-                            e.preventDefault();
-                            document.getElementById('rtsp_url').value = c.xaddrs;
-                        };
-                    })(cam));
-                    actions.appendChild(useBtn);
-
-                    li.appendChild(actions);
-
-                    var chDiv = document.createElement('div');
-                    chDiv.id = 'channels-' + cam.ip.replace(/\./g, '-');
-                    li.appendChild(chDiv);
-
-                    ul.appendChild(li);
-                });
-                div.appendChild(ul);
-            } else {
-                setText(div, 'No cameras found. Try entering the RTSP URL manually.');
-            }
-        })
-        .catch(function() {
-            setText(div, 'Scan failed. Check network connectivity.');
-        });
-}
-
-function detectChannels(cam) {
-    var divId = 'channels-' + cam.ip.replace(/\./g, '-');
-    var div = document.getElementById(divId);
-    div.innerHTML = '<p aria-busy="true">Probing channels (this may take a moment)...</p>';
-
-    var username = document.getElementById('cam_username').value || '';
-    var password = document.getElementById('cam_password').value || '';
-
-    fetch('/api/camera/detect-channels', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            ip: cam.ip,
-            username: username,
-            password: password,
-            hardware: cam.hardware || '',
-            name: cam.name || '',
-            scopes: cam.scopes || ''
-        })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        div.innerHTML = '';
-        if (data.channels && data.channels.length > 0) {
-            if (data.brand) {
-                var brandP = document.createElement('p');
-                brandP.innerHTML = '<small>Detected brand: <strong>' + data.brand + '</strong></small>';
-                div.appendChild(brandP);
-            }
-            var table = document.createElement('table');
-            table.style.fontSize = '0.85em';
-            var thead = document.createElement('thead');
-            thead.innerHTML = '<tr><th>Ch</th><th>Quality</th><th>Resolution</th><th>Codec</th><th></th></tr>';
-            table.appendChild(thead);
-            var tbody = document.createElement('tbody');
-            data.channels.forEach(function(ch) {
-                var tr = document.createElement('tr');
-                var tdCh = document.createElement('td');
-                tdCh.textContent = ch.channel;
-                var tdQ = document.createElement('td');
-                tdQ.textContent = ch.quality === 'main' ? 'Main' : 'Sub';
-                var tdRes = document.createElement('td');
-                tdRes.textContent = ch.resolution + ' @ ' + ch.framerate + 'fps';
-                var tdCodec = document.createElement('td');
-                tdCodec.textContent = ch.video_codec + (ch.can_copy ? '' : ' (transcode)');
-                var tdBtn = document.createElement('td');
-                var btn = document.createElement('a');
-                btn.href = '#';
-                btn.textContent = 'Select';
-                btn.addEventListener('click', (function(url) {
-                    return function(e) {
-                        e.preventDefault();
-                        document.getElementById('rtsp_url').value = url;
-                    };
-                })(ch.url));
-                tdBtn.appendChild(btn);
-                tr.appendChild(tdCh);
-                tr.appendChild(tdQ);
-                tr.appendChild(tdRes);
-                tr.appendChild(tdCodec);
-                tr.appendChild(tdBtn);
-                tbody.appendChild(tr);
-            });
-            table.appendChild(tbody);
-            div.appendChild(table);
-        } else {
-            setText(div, 'No active channels found. Try entering credentials above, or enter the RTSP URL manually.');
-        }
-    })
-    .catch(function() { setText(div, 'Channel detection failed.'); });
-}
-
+</script>
+<script src="{{ url_for('static', filename='js/camera-scan.js') }}"></script>
+<script>
 function testBackend() {
     var url = document.getElementById('backend_url').value;
     if (!url) { alert('Enter a backend URL first.'); return; }
@@ -409,32 +328,6 @@ function testBackend() {
     .catch(function() {
         setText(div, 'Connection test failed. Check the URL and network.');
     });
-}
-
-function probeCamera() {
-    var url = document.getElementById('rtsp_url').value;
-    if (!url) { alert('Enter an RTSP URL first.'); return; }
-
-    var div = document.getElementById('probe-results');
-    div.className = '';
-    div.innerHTML = '<p aria-busy="true">Testing camera connection...</p>';
-
-    fetch('/api/camera/probe?url=' + encodeURIComponent(url))
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.error) {
-                setText(div, 'Failed: ' + data.error);
-            } else {
-                var msg = 'Connected! Video: ' + data.video_codec +
-                    ' ' + data.resolution + ' @ ' + data.framerate + 'fps' +
-                    (data.audio_codec ? ', Audio: ' + data.audio_codec : ', No audio') +
-                    (data.can_copy ? ' (codec copy OK)' : ' (will transcode)');
-                setText(div, msg);
-            }
-        })
-        .catch(function() {
-            setText(div, 'Connection test failed.');
-        });
 }
 </script>
 {% endblock %}

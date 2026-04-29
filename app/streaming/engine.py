@@ -79,6 +79,15 @@ class StreamEngine:
                 hls_dir = self.config.get("hls", {}).get("segment_dir", "/run/rpie/hls")
                 Path(hls_dir).mkdir(parents=True, exist_ok=True)
 
+                # Tear down any leftover uploader from a previous start() —
+                # run_with_auto_restart() calls start() after each FFmpeg
+                # crash without calling stop(), so the prior uploader thread
+                # would otherwise leak and keep PUTting every segment to Bunny.
+                if self._uploader is not None:
+                    logger.info("Stopping leftover HLS uploader before restart")
+                    self._uploader.stop()
+                    self._uploader = None
+
                 # Start HLS uploader if Bunny CDN is configured
                 bunny_cfg = self.config.get("bunny", {})
                 if bunny_cfg.get("storage_zone") and bunny_cfg.get("api_key"):
@@ -215,13 +224,20 @@ class StreamEngine:
         health = self._health.get_snapshot()
         uptime = time.time() - self._start_time if self._start_time and self._running else 0
 
+        bitrate_kbps = health.bitrate_kbps
+        output_mode = self.config.get("output", {}).get("mode", "rtmp")
+        if output_mode in ("hls", "both") and bitrate_kbps <= 0:
+            # FFmpeg reports bitrate=N/A for HLS muxer output, so estimate
+            # from recent segment sizes and their EXTINF durations.
+            bitrate_kbps = self._compute_hls_bitrate()
+
         return {
             "running": self.is_running(),
             "uptime_seconds": round(uptime),
             "restart_count": self._restart_count,
             "last_error": self._last_error,
             "fps": health.fps,
-            "bitrate_kbps": health.bitrate_kbps,
+            "bitrate_kbps": bitrate_kbps,
             "speed": health.speed,
             "frame_count": health.frame_count,
             "is_stalled": health.is_stalled,
@@ -229,6 +245,52 @@ class StreamEngine:
             "pid": self._process.pid if self._process else None,
             "uploader": self._uploader.get_status() if self._uploader else None,
         }
+
+    def _compute_hls_bitrate(self, sample_size: int = 5) -> float:
+        """Estimate output bitrate from the most recent HLS segments.
+
+        Reads the live playlist, pairs the last ``sample_size`` segment
+        filenames with their EXTINF durations, and divides total bytes
+        by total seconds. Returns 0.0 if the playlist isn't readable.
+        """
+        hls_dir = Path(self.config.get("hls", {}).get("segment_dir", "/run/rpie/hls"))
+        playlist = hls_dir / "live.m3u8"
+
+        try:
+            lines = playlist.read_text().splitlines()
+        except OSError:
+            return 0.0
+
+        segments = []  # [(filename, duration), ...]
+        pending_dur = None
+        for line in lines:
+            line = line.strip()
+            if line.startswith("#EXTINF:"):
+                try:
+                    pending_dur = float(line[len("#EXTINF:"):].split(",", 1)[0])
+                except ValueError:
+                    pending_dur = None
+            elif line and not line.startswith("#") and pending_dur is not None:
+                segments.append((line, pending_dur))
+                pending_dur = None
+
+        # Drop the most recent entry — it may still be open for write.
+        recent = segments[-(sample_size + 1):-1] if len(segments) > sample_size else segments[:-1]
+        if not recent:
+            return 0.0
+
+        total_bytes = 0
+        total_seconds = 0.0
+        for name, dur in recent:
+            try:
+                total_bytes += (hls_dir / name).stat().st_size
+            except OSError:
+                continue
+            total_seconds += dur
+
+        if total_seconds <= 0:
+            return 0.0
+        return (total_bytes * 8.0) / (total_seconds * 1000.0)
 
     def get_health(self) -> HealthSnapshot:
         """Return the latest health snapshot."""
@@ -309,6 +371,10 @@ class StreamEngine:
 
     def _read_progress(self) -> None:
         """Background thread: read FFmpeg -progress output from stdout."""
+        # FFmpeg emits ~12 progress lines per second (one block per second).
+        # Throttle state writes to 1 Hz so we don't recompute HLS bitrate
+        # (which reads the playlist + stats segment files) on every line.
+        last_write = 0.0
         try:
             for line in self._process.stdout:
                 if self._stop_event.is_set():
@@ -316,7 +382,10 @@ class StreamEngine:
                 line = line.strip()
                 if line:
                     self._health.parse_line(line)
-                    self._write_state()
+                    now = time.monotonic()
+                    if now - last_write >= 1.0:
+                        self._write_state()
+                        last_write = now
         except (ValueError, OSError):
             pass  # Process closed — expected on stop
         except Exception as e:
