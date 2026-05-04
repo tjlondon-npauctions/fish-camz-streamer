@@ -24,6 +24,7 @@ class HLSUploader:
         stream_path: str = "live",
         state_dir: str = "/run/rpie",
         buffer_segments: int = 150,
+        max_unsent_segments: int = 1000,
     ):
         self._segment_dir = Path(segment_dir)
         self._storage_zone = storage_zone
@@ -38,7 +39,15 @@ class HLSUploader:
             self._base_url = f"https://storage.bunnycdn.com/{storage_zone}"
 
         self._buffer_segments = buffer_segments
+        # Hard cap on total segments on disk (uploaded + pending). When Bunny
+        # is unreachable for long periods, segments accumulate because the
+        # normal cleanup only evicts already-uploaded ones. This cap kicks in
+        # to drop oldest segments unconditionally, preventing the disk from
+        # filling up during extended outages (Starlink down for hours, etc).
+        # 1000 segments × 6s = ~100 minutes of footage at typical bitrates.
+        self._max_unsent_segments = max_unsent_segments
         self._max_timestamp_history = 15000  # cap to prevent unbounded memory growth
+        self._force_dropped_count = 0
 
         self._session = None
         self._requests = None
@@ -109,6 +118,7 @@ class HLSUploader:
             "last_error": self._last_error,
             "last_upload_time": self._last_upload_time,
             "segments_tracked": len(self._uploaded_segments),
+            "force_dropped_count": self._force_dropped_count,
         }
 
     def _run(self) -> None:
@@ -216,31 +226,68 @@ class HLSUploader:
             logger.warning("Failed to write segment index: %s", e)
 
     def _cleanup_disk(self, all_ts_paths: list[Path]) -> None:
-        """Remove oldest uploaded segments from disk when over the buffer limit.
+        """Two-pass disk cleanup.
 
-        Only deletes segments that have already been uploaded to CDN.
-        Timestamps are preserved in _segment_timestamps for DVR lookups.
+        Pass 1 (preferred): delete already-uploaded segments beyond
+        ``buffer_segments``. Timestamps are preserved in
+        ``_segment_timestamps`` for DVR lookups.
+
+        Pass 2 (safety): if total segments still exceed
+        ``max_unsent_segments`` after pass 1, drop the oldest unconditionally
+        — even if they haven't been uploaded yet. This protects the Pi's disk
+        when Bunny is unreachable for an extended period (Starlink outage,
+        Bunny rate-limit, etc.). Without this, segments accumulate forever and
+        eventually fill the disk, taking the whole streamer down.
         """
         if len(all_ts_paths) <= self._buffer_segments:
             return
 
+        # ─── Pass 1: soft eviction of uploaded segments only ───
         to_delete = len(all_ts_paths) - self._buffer_segments
         deleted = 0
+        remaining: list[Path] = []
         for path in all_ts_paths:
-            if deleted >= to_delete:
-                break
-            # Only delete if already uploaded (name is in timestamps = was uploaded at some point)
-            if path.name in self._segment_timestamps:
+            if deleted < to_delete and path.name in self._segment_timestamps:
                 try:
                     path.unlink()
                     self._uploaded_segments.discard(path.name)
                     deleted += 1
+                    continue
                 except OSError:
                     pass
+            remaining.append(path)
 
         if deleted > 0:
-            logger.debug("Cleaned up %d old segments from disk (%d remaining)",
-                         deleted, len(all_ts_paths) - deleted)
+            logger.debug(
+                "Cleaned up %d uploaded segments from disk (%d remaining)",
+                deleted,
+                len(remaining),
+            )
+
+        # ─── Pass 2: hard eviction when uploads have stalled ───
+        # Triggered when total segments-on-disk exceeds the safety cap. We
+        # drop oldest first, regardless of upload status, and emit a WARNING
+        # so the operator can diagnose. This is the OUTAGE PROTECTION path.
+        if len(remaining) > self._max_unsent_segments:
+            excess = len(remaining) - self._max_unsent_segments
+            hard_deleted = 0
+            for path in remaining[:excess]:
+                try:
+                    path.unlink()
+                    self._uploaded_segments.discard(path.name)
+                    self._segment_timestamps.pop(path.name, None)
+                    hard_deleted += 1
+                except OSError:
+                    pass
+            if hard_deleted > 0:
+                self._force_dropped_count += hard_deleted
+                logger.warning(
+                    "Force-dropped %d unsent segments — Bunny upload stalled? "
+                    "(%d still on disk, %d total force-dropped this session)",
+                    hard_deleted,
+                    len(remaining) - hard_deleted,
+                    self._force_dropped_count,
+                )
 
     def _upload_file(self, local_path: Path, remote_name: str, content_type: str) -> bool:
         """Upload a file to Bunny Storage."""

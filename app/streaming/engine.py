@@ -101,6 +101,7 @@ class StreamEngine:
                         stream_path=bunny_cfg.get("stream_path", "live"),
                         state_dir=state_dir,
                         buffer_segments=hls_cfg.get("buffer_segments", 150),
+                        max_unsent_segments=hls_cfg.get("max_unsent_segments", 1000),
                     )
                     self._uploader.start()
                 else:

@@ -24,6 +24,7 @@ hls:
   playlist_size: 10           # segments in rolling playlist (60s window)
   segment_dir: "/app/data/hls" # SD card for buffer persistence (not tmpfs)
   buffer_segments: 150        # keep 150 segments on disk (~15 min at 6s each)
+  max_unsent_segments: 1000   # safety cap (~100 min): drop oldest unconditionally beyond this to prevent disk fill during Bunny outages
 
 bunny:
   storage_zone: ""            # Bunny Storage zone name
