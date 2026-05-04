@@ -9,6 +9,9 @@ services:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
       - shared-state:/run/rpie
+      # Expose the host's machine-id so heartbeats carry a stable hardware
+      # identity for the cloud-side device inventory.
+      - /etc/machine-id:/etc/machine-id:ro
     restart: unless-stopped
     depends_on:
       - streamer

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import socket
 import threading
 import time
 from pathlib import Path
@@ -11,10 +13,12 @@ from typing import Optional
 
 from app.config import manager
 from app.system.stats import get_system_stats
+from app.updater import Updater, get_status as get_update_status
 
 logger = logging.getLogger(__name__)
 
 VERSION_FILE = Path(__file__).resolve().parent.parent / "VERSION"
+MACHINE_ID_FILE = Path("/etc/machine-id")
 
 
 def _get_version() -> str:
@@ -22,6 +26,30 @@ def _get_version() -> str:
         return VERSION_FILE.read_text().strip()
     except OSError:
         return "unknown"
+
+
+_DEVICE_ID_CACHE: Optional[str] = None
+
+
+def _get_device_id() -> str:
+    """Return a stable, hashed device identifier derived from /etc/machine-id.
+
+    The raw machine-id is hashed (SHA-256, first 16 hex chars) so it isn't
+    sent in the clear. Cached after first call. Returns an empty string if the
+    file is unreadable so the backend can fall back to registrationToken.
+    """
+    global _DEVICE_ID_CACHE
+    if _DEVICE_ID_CACHE is not None:
+        return _DEVICE_ID_CACHE
+    try:
+        raw = MACHINE_ID_FILE.read_text().strip()
+        if raw:
+            _DEVICE_ID_CACHE = hashlib.sha256(raw.encode("ascii")).hexdigest()[:16]
+            return _DEVICE_ID_CACHE
+    except OSError:
+        pass
+    _DEVICE_ID_CACHE = ""
+    return ""
 
 
 def _read_state_file(state_dir: str, filename: str) -> dict:
@@ -46,6 +74,7 @@ class HeartbeatSender:
         self._last_error = ""
         self._send_count = 0
         self._error_count = 0
+        self._updater = Updater(current_version=_get_version())
 
     def start(self) -> None:
         """Start the heartbeat background thread."""
@@ -108,9 +137,16 @@ class HeartbeatSender:
 
                 endpoint = f"{url}/api/vessels/heartbeat"
 
+                update_state = get_update_status()
                 payload = {
                     "vessel_name": config.get("vessel", {}).get("name", ""),
+                    "device_id": _get_device_id(),
+                    # Hostname is the operator-set Pi name (e.g. "whale-pi.local")
+                    # — handy for the admin UI when no friendly name is set yet.
+                    "device_name": socket.gethostname(),
                     "version": _get_version(),
+                    "update_status": update_state.get("status", "idle"),
+                    "update_error": update_state.get("error", ""),
                     "stream_health": _read_state_file(state_dir, "state.json"),
                     "system_stats": get_system_stats(),
                     "uploader": _read_state_file(state_dir, "uploader.json"),
@@ -140,6 +176,17 @@ class HeartbeatSender:
                         new_token = data.get("tunnel_token")
                         if isinstance(new_token, str) and new_token:
                             self._apply_tunnel_token(new_token)
+
+                        # Phase B — controlled update via target_version.
+                        # If the cloud has set one, hand off to the updater.
+                        # The updater is idempotent and no-ops when target == current.
+                        target_version = data.get("target_version")
+                        registry = data.get("registry")
+                        if isinstance(target_version, str) and target_version:
+                            try:
+                                self._updater.maybe_update(target_version, registry)
+                            except Exception as e:
+                                logger.warning("Updater dispatch error: %s", e)
                 else:
                     self._last_error = f"HTTP {resp.status_code}"
                     self._error_count += 1
