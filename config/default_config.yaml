@@ -46,6 +46,7 @@ encoding:
 
 stream:
   auto_start: true            # start streaming on boot if config is complete
+  allow_remote_control: true  # honour start/stop commands the cloud returns in the heartbeat response
   restart_delay: 5            # seconds before first auto-restart attempt
   max_restart_delay: 120      # cap for exponential backoff
   stable_threshold: 60        # seconds of stable streaming to reset backoff

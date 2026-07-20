@@ -136,41 +136,19 @@ def stream_control(action):
     if action not in ("start", "stop", "restart", "recreate"):
         return jsonify({"error": f"Unknown action: {action}"}), 400
 
-    try:
-        import docker
-        client = docker.from_env()
-
-        if action == "recreate":
-            return _recreate_streamer(client)
-
-        container = client.containers.get("rpie-streamer")
-
-        if action == "start":
-            container.start()
-        elif action == "stop":
-            container.stop(timeout=15)
-        elif action == "restart":
-            container.restart(timeout=15)
-
-        return jsonify({"status": "ok", "action": action})
-
-    except ImportError:
-        # Docker SDK not available — try subprocess fallback
-        import subprocess
+    if action == "recreate":
         try:
-            subprocess.run(
-                ["docker", action, "rpie-streamer"],
-                check=True,
-                capture_output=True,
-                timeout=30,
-            )
-            return jsonify({"status": "ok", "action": action})
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            import docker
+            return _recreate_streamer(docker.from_env())
+        except Exception as e:
+            logger.error("Stream recreate error: %s", e)
             return jsonify({"error": str(e)}), 500
 
-    except Exception as e:
-        logger.error("Stream control error: %s", e)
-        return jsonify({"error": str(e)}), 500
+    from app.streaming import container_control
+    result = container_control.set_stream(action)
+    if result.get("ok"):
+        return jsonify({"status": "ok", "action": action})
+    return jsonify({"error": result.get("error", "stream control failed")}), 500
 
 
 def _recreate_streamer(client):

@@ -155,13 +155,24 @@ class StreamEngine:
             self._write_state()
 
     def stop(self) -> None:
-        """Stop the FFmpeg process gracefully."""
-        # Stop the HLS uploader first (let it finish any in-flight uploads)
+        """Stop the FFmpeg process gracefully.
+
+        Note: we deliberately do NOT delete the live.m3u8 from Bunny here.
+        Every restart path (network recovery, settings change, controlled OTA
+        update, container restart) goes through this method, and deleting the
+        playlist creates a 10–30s 404 window during which viewers see "This
+        camera is not currently streaming" — even though the stream is just
+        being recreated under the same hostname. The cloud-side player
+        already gates playback on heartbeat freshness (`isPlayable = isLive
+        && fresh heartbeat`), so a Pi that's actually gone surfaces as
+        offline within ~90s without us having to break the playlist.
+
+        If we ever need a "fully decommission" action, call uploader.cleanup()
+        explicitly from that admin path, not from generic stop().
+        """
         if self._uploader:
             logger.info("Stopping HLS uploader...")
             self._uploader.stop()
-            # Delete the playlist from CDN so viewers get 404 instead of stale content
-            self._uploader.cleanup()
             self._uploader = None
 
         with self._lock:

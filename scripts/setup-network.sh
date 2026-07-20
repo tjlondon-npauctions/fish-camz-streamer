@@ -127,6 +127,7 @@ START_DAEMON="true"
 USBAUTO="true"
 DEVICES="$GPS_DEV"
 GPSD_OPTIONS="-n"
+OPTIONS="-n"
 EOF
 
     systemctl enable gpsd

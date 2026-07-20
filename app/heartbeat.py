@@ -119,6 +119,36 @@ class HeartbeatSender:
         except Exception as e:
             logger.warning("Could not (re)start tunnel after token update: %s", e)
 
+    def _apply_stream_command(self, command: str, state_dir: str) -> None:
+        """Act on a start/stop command the backend returns in the heartbeat.
+
+        The cloud drives dock-aware auto-streaming: when a vessel leaves its
+        dock the backend returns ``stream_command: "start"`` (and ``"stop"`` on
+        return). Gated by ``stream.allow_remote_control`` so an operator can veto
+        it locally, and idempotent against the current streamer state.
+        """
+        if command not in ("start", "stop"):
+            return
+
+        config = manager.load()
+        if not manager.get(config, "stream", "allow_remote_control", True):
+            logger.info("Ignoring stream_command=%s — remote control disabled", command)
+            return
+
+        # Idempotency guard: no-op if the streamer is already in the desired state.
+        state = _read_state_file(state_dir, "state.json")
+        running = bool(state.get("running"))
+        if running == (command == "start"):
+            return
+
+        from app.streaming import container_control
+
+        result = container_control.set_stream(command)
+        if result.get("ok"):
+            logger.info("Applied stream_command=%s from backend", command)
+        else:
+            logger.warning("stream_command=%s failed: %s", command, result.get("error"))
+
     def _run(self) -> None:
         """Main heartbeat loop."""
         import requests
@@ -187,6 +217,14 @@ class HeartbeatSender:
                                 self._updater.maybe_update(target_version, registry)
                             except Exception as e:
                                 logger.warning("Updater dispatch error: %s", e)
+
+                        # Dock-aware auto-streaming — start/stop on cloud command.
+                        stream_command = data.get("stream_command")
+                        if isinstance(stream_command, str) and stream_command:
+                            try:
+                                self._apply_stream_command(stream_command, state_dir)
+                            except Exception as e:
+                                logger.warning("Stream command dispatch error: %s", e)
                 else:
                     self._last_error = f"HTTP {resp.status_code}"
                     self._error_count += 1
