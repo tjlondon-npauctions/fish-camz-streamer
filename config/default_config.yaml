@@ -11,6 +11,8 @@ camera:
   password: ""
   transport: "tcp"            # tcp (recommended) or udp
   last_probe: {}              # Cached probe summary {url, video_codec, resolution, framerate, can_copy}
+  probe_retries: 3            # probe attempts before falling back (camera may be mid-reboot on restart)
+  probe_retry_delay: 5        # seconds between probe attempts
 
 output:
   mode: "rtmp"                # "rtmp", "hls", or "both" (RTMP + HLS simultaneously)

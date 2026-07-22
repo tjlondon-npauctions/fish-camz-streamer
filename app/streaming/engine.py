@@ -35,6 +35,41 @@ def _redact(text: str) -> str:
     return text
 
 
+def _stream_info_from_config(cam: dict) -> Optional[StreamInfo]:
+    """Reconstruct a StreamInfo from the persisted camera.last_probe summary.
+
+    Only returns a value when the cached summary was captured for the current
+    RTSP URL and reported a copyable (H.264) source. Used as a fallback so a
+    transient probe failure doesn't downgrade a known-copyable camera to
+    transcode mode.
+    """
+    lp = cam.get("last_probe") or {}
+    if not lp or lp.get("url") != cam.get("rtsp_url") or not lp.get("can_copy"):
+        return None
+
+    width = height = 0
+    res = str(lp.get("resolution", ""))
+    if "x" in res:
+        try:
+            width, height = (int(part) for part in res.split("x", 1))
+        except ValueError:
+            width = height = 0
+    codec = str(lp.get("video_codec", ""))
+    try:
+        framerate = float(lp.get("framerate", 0) or 0)
+    except (TypeError, ValueError):
+        framerate = 0.0
+
+    return StreamInfo(
+        video_codec=codec,
+        framerate=framerate,
+        width=width,
+        height=height,
+        is_h264=(codec.lower() == "h264"),
+        can_copy=True,
+    )
+
+
 class StreamEngine:
     """Manages an FFmpeg streaming subprocess with auto-restart."""
 
@@ -57,6 +92,9 @@ class StreamEngine:
         self._start_time: Optional[float] = None
         self._restart_count = 0
         self._last_error = ""
+        # Last successful camera probe this session — reused as a fallback so a
+        # transient probe failure on restart doesn't downgrade copy → transcode.
+        self._last_probe: Optional[StreamInfo] = None
         self._current_backoff = manager.get(config, "stream", "restart_delay", 5)
         self._stable_since: Optional[float] = None
 
@@ -363,23 +401,63 @@ class StreamEngine:
         self.config = config
 
     def _probe_camera(self) -> Optional[StreamInfo]:
-        """Probe the camera stream, returning None on failure."""
+        """Probe the camera, returning None only when we genuinely can't
+        determine a copyable source.
+
+        On a restart the camera may be briefly unreachable (e.g. a nightly
+        reboot). A single failed probe would force a needless fall back to
+        transcode mode — burning CPU to re-encode an H.264 source that's
+        actually copyable, and staying that way until the next restart. So we
+        retry the live probe a few times to let the camera come back, then fall
+        back to the last successful probe (this session, or the persisted
+        camera.last_probe from setup) to stay in copy mode.
+        """
         cam = self.config.get("camera", {})
         rtsp_url = _build_rtsp_url(cam)
         if not rtsp_url:
             return None
 
-        try:
-            info = probe_stream(rtsp_url)
-            logger.info(
-                "Camera probe: %s %s @ %s %.0ffps (can_copy=%s)",
-                info.video_codec, info.audio_codec,
-                info.resolution, info.framerate, info.can_copy,
+        attempts = manager.get(self.config, "camera", "probe_retries", 3)
+        delay = manager.get(self.config, "camera", "probe_retry_delay", 5)
+        last_err: Optional[Exception] = None
+
+        for attempt in range(1, attempts + 1):
+            if self._stop_event.is_set():
+                return None
+            try:
+                info = probe_stream(rtsp_url)
+                logger.info(
+                    "Camera probe: %s %s @ %s %.0ffps (can_copy=%s)",
+                    info.video_codec, info.audio_codec,
+                    info.resolution, info.framerate, info.can_copy,
+                )
+                self._last_probe = info
+                return info
+            except RuntimeError as e:
+                last_err = e
+                if attempt < attempts:
+                    logger.warning(
+                        "Camera probe failed (attempt %d/%d): %s — retrying in %ds",
+                        attempt, attempts, e, delay,
+                    )
+                    self._stop_event.wait(delay)
+
+        # Retries exhausted — reuse the last known-good probe rather than
+        # downgrading a source we know is copyable to transcode.
+        fallback = self._last_probe or _stream_info_from_config(cam)
+        if fallback is not None and fallback.can_copy:
+            logger.warning(
+                "Camera probe failed after %d attempts (%s) — reusing last "
+                "successful probe to stay in copy mode",
+                attempts, last_err,
             )
-            return info
-        except RuntimeError as e:
-            logger.warning("Camera probe failed: %s (will use transcode mode)", e)
-            return None
+            return fallback
+
+        logger.warning(
+            "Camera probe failed after %d attempts: %s (will use transcode mode)",
+            attempts, last_err,
+        )
+        return None
 
     def _read_progress(self) -> None:
         """Background thread: read FFmpeg -progress output from stdout."""
