@@ -1,5 +1,12 @@
 # RPie-Streamer — Detailed Installation Guide
 
+> **⚠️ SUPERSEDED — do not follow this for a new vessel Pi.**
+> This guide documents the original Cloudflare Stream (RTMPS) deployment and is
+> out of date: production vessels now push HLS to Bunny CDN, pair with the cloud
+> via a registration token, and use a non-default camera subnet.
+> **Use [`docs/NEW-PI-SETUP.md`](docs/NEW-PI-SETUP.md) instead.**
+> Kept for the hardware/wiring reference in Part 1 and the RTSP URL table in Part 4.
+
 This guide walks through every step of setting up the streaming appliance, from unboxing the Raspberry Pi to a working live stream on Cloudflare.
 
 ---
