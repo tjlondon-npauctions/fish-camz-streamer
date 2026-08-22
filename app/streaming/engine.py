@@ -146,6 +146,7 @@ class StreamEngine:
                         max_disk_bytes=hls_cfg.get("max_disk_bytes", 2147483648),
                         min_free_bytes=hls_cfg.get("min_free_bytes", 1073741824),
                         live_batch=hls_cfg.get("live_batch", 2),
+                        live_catch_up=hls_cfg.get("live_catch_up", 6),
                         live_deadline=hls_cfg.get("live_deadline", 30),
                         backfill_min_interval=hls_cfg.get("backfill_min_interval", 120),
                         backfill_suspend_backlog=hls_cfg.get("backfill_suspend_backlog", 900),

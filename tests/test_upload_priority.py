@@ -23,6 +23,7 @@ def _plan(disk, live_names, confirmed=(), **overrides):
         last_backfill_at=NOW,
         segment_duration=SEG,
         live_batch=2,
+        live_catch_up=0,   # default these tests to the skip-ahead path
         live_deadline=30.0,
         backfill_min_interval=120.0,
         backfill_suspend_backlog=900.0,
@@ -147,3 +148,38 @@ class TestBacklog:
         assert plan.backlog_seconds == 0.0
         assert plan.live == []
         assert plan.backfill == []
+
+
+class TestCatchUp:
+    """Below the threshold we are not really behind, so continuity wins."""
+
+    def test_small_backlog_worked_through_in_order(self):
+        disk = _disk(4)
+        plan = _plan(disk, [c.name for c in disk], live_catch_up=6)
+        assert [c.name for c in plan.live] == [disk[0].name, disk[1].name]
+
+    def test_large_backlog_skips_to_the_newest(self):
+        disk = _disk(20)
+        plan = _plan(disk, [c.name for c in disk], live_catch_up=6)
+        assert {c.name for c in plan.live} == {disk[-1].name, disk[-2].name}
+
+    def test_catch_up_does_not_demote_oversized_segments(self):
+        """With a small backlog there is nothing queued behind to protect."""
+        disk = _disk(3, size=HUGE)
+        plan = _plan(disk, [c.name for c in disk],
+                     live_catch_up=6, throughput_bps=LINK)
+        assert plan.demoted == []
+        assert len(plan.live) == 2
+
+    def test_threshold_boundary(self):
+        disk = _disk(6)
+        names = [c.name for c in disk]
+        assert [c.name for c in _plan(disk, names, live_catch_up=6).live][0] == disk[0].name
+        assert [c.name for c in _plan(disk, names, live_catch_up=5).live][0] == disk[-2].name
+
+    def test_uploads_stay_chronological_in_both_modes(self):
+        disk = _disk(20)
+        for threshold in (0, 6, 50):
+            names = [c.name for c in _plan(disk, [c.name for c in disk],
+                                           live_catch_up=threshold, live_batch=3).live]
+            assert names == sorted(names)

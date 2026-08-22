@@ -60,6 +60,7 @@ class HLSUploader:
         max_disk_bytes: int = 2147483648,
         min_free_bytes: int = 1073741824,
         live_batch: int = 2,
+        live_catch_up: int = 6,
         live_deadline: float = 30.0,
         backfill_min_interval: float = 120.0,
         backfill_suspend_backlog: float = 900.0,
@@ -94,6 +95,7 @@ class HLSUploader:
         self._segment_duration = segment_duration
         self._published_playlist_size = published_playlist_size
         self._live_batch = live_batch
+        self._live_catch_up = live_catch_up
         self._live_deadline = live_deadline
         self._backfill_min_interval = backfill_min_interval
         self._backfill_suspend_backlog = backfill_suspend_backlog
@@ -401,6 +403,7 @@ class HLSUploader:
             last_backfill_at=self._last_backfill_at,
             segment_duration=self._segment_duration,
             live_batch=self._live_batch,
+            live_catch_up=self._live_catch_up,
             live_deadline=self._live_deadline,
             backfill_min_interval=self._backfill_min_interval,
             backfill_suspend_backlog=self._backfill_suspend_backlog,

@@ -31,6 +31,7 @@ hls:
   min_free_bytes: 1073741824  # keep at least 1 GiB free on the card regardless
   published_playlist_size: 10 # entries in the live.m3u8 we publish (keep >= 6 for the player's latency window)
   live_batch: 2               # live segments uploaded per cycle before re-prioritising
+  live_catch_up: 6            # pending live segments below which we catch up in order rather than skipping ahead
   live_deadline: 30           # seconds; a segment slower than this to upload is left to backfill
   backfill_min_interval: 120  # seconds; guaranteed backfill slot even while live has work
   backfill_suspend_backlog: 900 # seconds of backlog above which backfill yields entirely to live

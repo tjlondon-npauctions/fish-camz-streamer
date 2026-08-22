@@ -124,10 +124,12 @@ class TestHappyPath:
         live = old[-3:]
         _write_playlist(tmp_path, live, start_index=17)
         up = _uploader(tmp_path)
-        rec = _run(up, _Recorder(), cycles=1)
-        assert set(rec.files) <= set(old)
-        assert live[-1] in rec.files          # newest live segment went first
-        assert old[0] not in rec.files[:2]    # ancient history did not
+        rec = _run(up, _Recorder(), cycles=2)  # live_batch is 2 per cycle
+        # The live window is served first; history gets at most the single
+        # guaranteed backfill slot per cycle.
+        assert set(live) <= set(rec.files)
+        history = [n for n in rec.files if n not in set(live)]
+        assert len(history) <= 2
 
 
 class TestNoFourOhFours:
@@ -159,7 +161,7 @@ class TestNoFourOhFours:
 
     def test_discontinuity_marked_when_a_segment_never_lands(self, tmp_path):
         """Feed segments one per cycle as FFmpeg does, failing one mid-stream."""
-        up = _uploader(tmp_path, live_batch=1)
+        up = _uploader(tmp_path, live_batch=1, live_catch_up=0)
         rec = _Recorder(fail={"s1_000003.ts"})
         names = []
         for i in range(6):
@@ -214,6 +216,25 @@ class TestHealthyLinkContinuity:
         published = [e.name for e in parse_playlist(rec.blobs["live.m3u8"])]
         assert published == sorted(published)
         assert len(published) == len(names)
+
+
+class TestStuckSegment:
+    def test_catch_up_recovers_from_a_segment_that_never_uploads(self, tmp_path):
+        """In catch-up mode we retry in order, so one dead segment blocks the
+        live edge — but only until the backlog crosses the threshold, at which
+        point we skip ahead rather than stalling forever."""
+        up = _uploader(tmp_path, live_batch=1, live_catch_up=2)
+        rec = _Recorder(fail={"s1_000001.ts"})
+        names = []
+        for i in range(8):
+            names += _write_segments(tmp_path, 1, start=i)
+            _write_playlist(tmp_path, names)
+            _run(up, rec, cycles=1)
+
+        published = [e.name for e in parse_playlist(rec.blobs["live.m3u8"])]
+        assert "s1_000001.ts" not in published
+        assert published, "live edge never recovered"
+        assert published[-1] > "s1_000003.ts"
 
 
 class TestRestartPersistence:

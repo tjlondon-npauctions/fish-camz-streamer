@@ -109,6 +109,7 @@ def plan_uploads(
     last_backfill_at: float,
     segment_duration: float,
     live_batch: int,
+    live_catch_up: int,
     live_deadline: float,
     backfill_min_interval: float,
     backfill_suspend_backlog: float,
@@ -121,40 +122,56 @@ def plan_uploads(
 
     On a link that cannot keep up, uploading oldest-first (the historical
     behaviour) spends every byte on footage nobody is waiting for and the live
-    edge is never reached. So: live segments go newest-first, and backfill gets
-    a guaranteed slot only every ``backfill_min_interval`` — except when live
-    has nothing pending, when it always gets one.
+    edge is never reached. So once the live backlog passes ``live_catch_up`` we
+    abandon the middle and work back from the newest segment.
+
+    Below that threshold we are not really behind, and skipping would cost live
+    continuity — a visible gap — to save bandwidth we are not short of. So a
+    small backlog is worked through in order instead.
+
+    Backfill gets a guaranteed slot only every ``backfill_min_interval`` —
+    except when live has nothing pending, when it always gets one.
     """
     by_name = {c.name: c for c in on_disk}
     unconfirmed = [c for c in on_disk if c.name not in confirmed]
     backlog_seconds = len(unconfirmed) * segment_duration
 
-    # ── Live edge: newest first ──
-    live: list[UploadCandidate] = []
-    demoted: list[str] = []
-    for name in reversed(list(live_names)):
+    # ── Live edge ──
+    live_pending = []
+    for name in live_names:  # chronological
         if name in confirmed:
             continue
         candidate = by_name.get(name)
         if candidate is None:  # named in the playlist but already evicted
             continue
-        # Head-of-line guard: one oversized segment can block the live edge for
-        # longer than the segment is live-relevant, while newer ones pile up
-        # behind it. Demote rather than drop — it stays eligible for backfill.
-        if throughput_bps > 0 and candidate.size / throughput_bps > live_deadline:
-            demoted.append(name)
-            continue
-        live.append(candidate)
-        if len(live) >= live_batch:
-            break
+        live_pending.append(candidate)
 
-    # Selection is newest-first (stay near the live edge), but the *upload*
-    # order has to be chronological. The published playlist only appends
-    # segments that move forward in time, so confirming a newer segment before
-    # an older one strands the older one out of the playlist for good — one
-    # dropped segment, one discontinuity, one visible stutter, on a link with
-    # bandwidth to spare.
-    live.reverse()
+    live: list[UploadCandidate] = []
+    demoted: list[str] = []
+
+    if len(live_pending) <= live_catch_up:
+        # Barely behind: work through in order. A brief hiccup on a healthy
+        # link must not cost continuity — the published playlist only moves
+        # forward, so anything skipped here is lost from live for good.
+        live = live_pending[:live_batch]
+    else:
+        # Genuinely behind: work back from the newest so the live edge is
+        # reachable at all, accepting the gap that leaves behind.
+        for candidate in reversed(live_pending):
+            # Head-of-line guard: one oversized segment can block the live edge
+            # for longer than the segment is live-relevant, while newer ones
+            # pile up behind it. Demote rather than drop — it stays eligible
+            # for backfill.
+            if throughput_bps > 0 and candidate.size / throughput_bps > live_deadline:
+                demoted.append(candidate.name)
+                continue
+            live.append(candidate)
+            if len(live) >= live_batch:
+                break
+        # Selection is newest-first, but the *upload* order has to be
+        # chronological: confirming a newer segment before an older one strands
+        # the older one out of the playlist permanently.
+        live.reverse()
 
     live_window = set(live_names)
     demoted_set = set(demoted)
