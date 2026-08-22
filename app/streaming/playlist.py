@@ -148,6 +148,14 @@ def plan_uploads(
         if len(live) >= live_batch:
             break
 
+    # Selection is newest-first (stay near the live edge), but the *upload*
+    # order has to be chronological. The published playlist only appends
+    # segments that move forward in time, so confirming a newer segment before
+    # an older one strands the older one out of the playlist for good — one
+    # dropped segment, one discontinuity, one visible stutter, on a link with
+    # bandwidth to spare.
+    live.reverse()
+
     live_window = set(live_names)
     demoted_set = set(demoted)
 

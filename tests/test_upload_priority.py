@@ -32,11 +32,20 @@ def _plan(disk, live_names, confirmed=(), **overrides):
 
 
 class TestLiveOrdering:
-    def test_live_window_uploaded_newest_first(self):
+    def test_live_window_selects_the_newest_segments(self):
+        """Selection favours the live edge over history."""
         disk = _disk(10)
         live = [c.name for c in disk[-4:]]
         plan = _plan(disk, live)
-        assert [c.name for c in plan.live] == [disk[-1].name, disk[-2].name]
+        assert {c.name for c in plan.live} == {disk[-1].name, disk[-2].name}
+
+    def test_live_uploads_run_in_chronological_order(self):
+        """Confirming a newer segment first would strand the older one out of
+        the playlist permanently — a dropped segment and a visible stutter."""
+        disk = _disk(10)
+        plan = _plan(disk, [c.name for c in disk[-4:]], live_batch=3)
+        names = [c.name for c in plan.live]
+        assert names == sorted(names)
 
     def test_live_batch_caps_the_round(self):
         disk = _disk(10)
@@ -46,8 +55,9 @@ class TestLiveOrdering:
     def test_confirmed_segments_skipped(self):
         disk = _disk(4)
         plan = _plan(disk, [c.name for c in disk], confirmed=[disk[-1].name])
-        assert disk[-1].name not in [c.name for c in plan.live]
-        assert plan.live[0].name == disk[-2].name
+        names = [c.name for c in plan.live]
+        assert disk[-1].name not in names
+        assert disk[-2].name in names
 
     def test_segment_named_but_evicted_is_skipped(self):
         disk = _disk(2)

@@ -182,6 +182,40 @@ def _write_window(tmp_path, upto):
     return names
 
 
+class TestHealthyLinkContinuity:
+    def test_two_pending_segments_publish_contiguously(self, tmp_path):
+        """Regression: on a link with bandwidth to spare, two segments arriving
+        in one cycle were uploaded newest-first, so the older one was published
+        after the newer, hit the forward-in-time rule, and was dropped from the
+        playlist for good — a gap and a stutter on a healthy vessel."""
+        up = _uploader(tmp_path, live_batch=2)
+        rec = _Recorder()
+        names = []
+        # Two new segments per cycle, as happens whenever a cycle catches up.
+        for cycle in range(0, 8, 2):
+            names += _write_segments(tmp_path, 2, start=cycle)
+            _write_playlist(tmp_path, names)
+            _run(up, rec, cycles=1)
+
+        published = [e.name for e in parse_playlist(rec.blobs["live.m3u8"])]
+        assert published == names
+        # The standalone tag; DISCONTINUITY-SEQUENCE is always in the header.
+        assert "#EXT-X-DISCONTINUITY\n" not in rec.blobs["live.m3u8"]
+
+    def test_no_gaps_when_every_upload_succeeds(self, tmp_path):
+        up = _uploader(tmp_path, live_batch=3)
+        rec = _Recorder()
+        names = []
+        for cycle in range(0, 9, 3):
+            names += _write_segments(tmp_path, 3, start=cycle)
+            _write_playlist(tmp_path, names)
+            _run(up, rec, cycles=1)
+
+        published = [e.name for e in parse_playlist(rec.blobs["live.m3u8"])]
+        assert published == sorted(published)
+        assert len(published) == len(names)
+
+
 class TestRestartPersistence:
     def test_new_instance_does_not_re_upload(self, tmp_path):
         """Root cause of 'hours-old footage as live': state died with the process."""
