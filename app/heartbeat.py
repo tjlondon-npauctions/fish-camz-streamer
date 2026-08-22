@@ -52,6 +52,38 @@ def _get_device_id() -> str:
     return ""
 
 
+def build_payload(config: dict) -> dict:
+    """Assemble the heartbeat body from config plus the state files on tmpfs.
+
+    Shared with the settings page's "Test connection" button so the test
+    exercises the real endpoint with the real payload — a test that posts a
+    stand-in body can pass while the live heartbeat fails, or mark a healthy
+    vessel offline by omitting stream_health.
+    """
+    state_dir = manager.get(config, "system", "state_dir", "/run/rpie")
+    update_state = get_update_status()
+    return {
+        "vessel_name": config.get("vessel", {}).get("name", ""),
+        "device_id": _get_device_id(),
+        # Hostname is the operator-set Pi name (e.g. "whale-pi.local")
+        # — handy for the admin UI when no friendly name is set yet.
+        "device_name": socket.gethostname(),
+        "version": _get_version(),
+        "update_status": update_state.get("status", "idle"),
+        "update_error": update_state.get("error", ""),
+        "stream_health": _read_state_file(state_dir, "state.json"),
+        "system_stats": get_system_stats(),
+        "uploader": _read_state_file(state_dir, "uploader.json"),
+        "network": _read_state_file(state_dir, "network.json"),
+        "gps": _read_state_file(state_dir, "gps.json"),
+        "bunny_stream_path": config.get("bunny", {}).get("stream_path", "live"),
+        "bunny_cdn_url": config.get("bunny", {}).get("cdn_url", ""),
+        "output_mode": config.get("output", {}).get("mode", "rtmp"),
+        "tunnel_url": config.get("remote_access", {}).get("tunnel_url", ""),
+        "timestamp": time.time(),
+    }
+
+
 def _read_state_file(state_dir: str, filename: str) -> dict:
     """Read a JSON state file from tmpfs."""
     state_file = Path(state_dir) / filename
@@ -167,27 +199,7 @@ class HeartbeatSender:
 
                 endpoint = f"{url}/api/vessels/heartbeat"
 
-                update_state = get_update_status()
-                payload = {
-                    "vessel_name": config.get("vessel", {}).get("name", ""),
-                    "device_id": _get_device_id(),
-                    # Hostname is the operator-set Pi name (e.g. "whale-pi.local")
-                    # — handy for the admin UI when no friendly name is set yet.
-                    "device_name": socket.gethostname(),
-                    "version": _get_version(),
-                    "update_status": update_state.get("status", "idle"),
-                    "update_error": update_state.get("error", ""),
-                    "stream_health": _read_state_file(state_dir, "state.json"),
-                    "system_stats": get_system_stats(),
-                    "uploader": _read_state_file(state_dir, "uploader.json"),
-                    "network": _read_state_file(state_dir, "network.json"),
-                    "gps": _read_state_file(state_dir, "gps.json"),
-                    "bunny_stream_path": config.get("bunny", {}).get("stream_path", "live"),
-                    "bunny_cdn_url": config.get("bunny", {}).get("cdn_url", ""),
-                    "output_mode": config.get("output", {}).get("mode", "rtmp"),
-                    "tunnel_url": config.get("remote_access", {}).get("tunnel_url", ""),
-                    "timestamp": time.time(),
-                }
+                payload = build_payload(config)
 
                 headers = {"Content-Type": "application/json"}
                 if api_key:

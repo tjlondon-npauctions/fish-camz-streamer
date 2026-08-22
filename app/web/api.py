@@ -348,18 +348,43 @@ def test_backend():
     """Test connectivity to the Fishcamz backend."""
     import requests as http_requests
 
+    from app.heartbeat import build_payload
+
     data = request.get_json(silent=True) or {}
-    url = (data.get("url") or "").strip().rstrip("/")
+    config = manager.load()
+    backend_cfg = config.get("backend", {})
+
+    url = (data.get("url") or backend_cfg.get("url", "")).strip().rstrip("/")
+    api_key = backend_cfg.get("vessel_api_key", "")
 
     if not url:
         return jsonify({"ok": False, "error": "No URL provided"})
 
+    if not api_key:
+        return jsonify({
+            "ok": False,
+            "error": "No registration token saved yet. Paste it above, click Save, then test.",
+        })
+
+    # Send a real heartbeat rather than probing some other endpoint: this is
+    # the only request the Pi actually makes against the backend, so it is the
+    # only one whose result means anything. /api/vessels is admin-only and
+    # answers 401 to everyone, which made the old test look like a bad token.
     try:
-        resp = http_requests.get(f"{url}/api/vessels", timeout=10)
-        if resp.status_code == 200:
+        resp = http_requests.post(
+            f"{url}/api/vessels/heartbeat",
+            json=build_payload(config),
+            headers={"Content-Type": "application/json", "X-Vessel-Key": api_key},
+            timeout=15,
+        )
+        if resp.status_code in (200, 201):
             return jsonify({"ok": True})
-        else:
-            return jsonify({"ok": False, "error": f"HTTP {resp.status_code}"})
+        if resp.status_code == 401:
+            return jsonify({
+                "ok": False,
+                "error": "Registration token rejected. Check it matches the vessel in admin.",
+            })
+        return jsonify({"ok": False, "error": f"HTTP {resp.status_code}"})
     except http_requests.ConnectionError:
         return jsonify({"ok": False, "error": "Could not connect. Check the URL and network."})
     except http_requests.Timeout:
