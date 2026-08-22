@@ -84,10 +84,30 @@ else
     echo "  Docker installed."
 fi
 
+# Cap container logs at the daemon level. Compose sets this too, but only for
+# containers it creates — the OTA updater and any manual `docker run` bypass
+# that, and unbounded json-file logs are the usual cause of a full SD card.
+if [[ ! -f /etc/docker/daemon.json ]]; then
+    mkdir -p /etc/docker
+    cat > /etc/docker/daemon.json << 'DAEMONEOF'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+DAEMONEOF
+    echo "  Log rotation configured (/etc/docker/daemon.json)"
+else
+    echo "  /etc/docker/daemon.json exists — leaving it alone."
+    echo "  Check it caps log-opts.max-size, or logs will fill the disk."
+fi
+
 # Add user to docker group and enable on boot
 usermod -aG docker "$ACTUAL_USER" 2>/dev/null || true
 systemctl enable docker
-systemctl start docker
+systemctl restart docker
 
 # ── Step 3: Camera network ──
 

@@ -254,6 +254,10 @@ class Updater:
                 "network_mode": host_cfg.get("NetworkMode") or "default",
                 "restart_policy": host_cfg.get("RestartPolicy") or {"Name": "unless-stopped"},
                 "volumes": host_cfg.get("Binds") or [],
+                # Without this the recreated container silently falls back to
+                # the daemon default, discarding whatever compose specified —
+                # which for log rotation means unbounded json-file growth.
+                "log_config": host_cfg.get("LogConfig"),
                 "detach": True,
             }
             if mounts:

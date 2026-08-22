@@ -127,7 +127,10 @@ def _hls_output_args(config: dict) -> list[str]:
         "-f", "hls",
         "-hls_time", str(segment_duration),
         "-hls_list_size", str(playlist_size),
-        "-hls_flags", "append_list",
+        # program_date_time gives each segment its true start time from the
+        # system clock. Deriving it from file mtime instead would be the
+        # segment END, a systematic one-segment error.
+        "-hls_flags", "append_list+program_date_time",
         "-hls_segment_filename", f"{segment_dir}/s{session_id}_%06d.ts",
         f"{segment_dir}/live.m3u8",
     ]

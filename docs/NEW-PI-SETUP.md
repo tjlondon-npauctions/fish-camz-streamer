@@ -191,6 +191,34 @@ cd ~/rpie-streamer && bash scripts/manual-update.sh 1.7.1
 
 ---
 
+## Log rotation on an existing Pi
+
+New installs get this from `install-docker.sh`. Pis built before 1.7.2 have
+unbounded `json-file` logs, which is the usual cause of a full SD card — the
+uploader caps video, nothing capped logs.
+
+```bash
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
+{
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" }
+}
+EOF
+sudo systemctl restart docker
+cd ~/rpie-streamer && docker compose up -d --force-recreate
+```
+
+The daemon setting only applies to containers created *after* it, hence the
+force-recreate. Existing log files are never truncated by any of this, so
+reclaim the space that's already gone:
+
+```bash
+sudo du -sh /var/lib/docker/containers/*/*-json.log
+sudo truncate -s 0 $(docker inspect --format='{{.LogPath}}' rpie-streamer)
+sudo truncate -s 0 $(docker inspect --format='{{.LogPath}}' rpie-web)
+```
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

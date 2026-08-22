@@ -27,6 +27,16 @@ hls:
   segment_dir: "/app/data/hls" # SD card for buffer persistence (not tmpfs)
   buffer_segments: 150        # keep 150 segments on disk (~15 min at 6s each)
   max_unsent_segments: 1000   # safety cap (~100 min): drop oldest unconditionally beyond this to prevent disk fill during Bunny outages
+  max_disk_bytes: 2147483648  # 2 GiB ceiling on segments; the count cap above is not a disk guarantee at high bitrates
+  min_free_bytes: 1073741824  # keep at least 1 GiB free on the card regardless
+  published_playlist_size: 10 # entries in the live.m3u8 we publish (keep >= 6 for the player's latency window)
+  live_batch: 2               # live segments uploaded per cycle before re-prioritising
+  live_deadline: 30           # seconds; a segment slower than this to upload is left to backfill
+  backfill_min_interval: 120  # seconds; guaranteed backfill slot even while live has work
+  backfill_suspend_backlog: 900 # seconds of backlog above which backfill yields entirely to live
+  index_upload_interval: 180  # seconds between segments.json uploads (cloud reads it every 300)
+  state_persist_interval: 30  # seconds between uploader state writes (SD card wear)
+  max_publish_age: 600        # seconds; never start a fresh playlist from footage older than this
 
 bunny:
   storage_zone: ""            # Bunny Storage zone name

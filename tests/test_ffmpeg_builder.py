@@ -248,6 +248,9 @@ class TestHLSOutput:
         flags = cmd[flags_idx + 1]
         assert "append_list" in flags
         assert "delete_segments" not in flags
+        # PROGRAM-DATE-TIME is what gives each segment a true start time; the
+        # uploader republishes it so the live clock is accurate.
+        assert "program_date_time" in flags
 
     def test_hls_with_copy(self):
         """HLS mode should still use copy when H.264 source."""

@@ -1,3 +1,11 @@
+# Unbounded json-file logs are the usual cause of a full SD card on these
+# Pis — far more so than video segments, which the uploader caps.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   web:
     image: ghcr.io/tjlondon-npauctions/fish-camz-streamer:latest
@@ -12,6 +20,7 @@ services:
       # Expose the host's machine-id so heartbeats carry a stable hardware
       # identity for the cloud-side device inventory.
       - /etc/machine-id:/etc/machine-id:ro
+    logging: *default-logging
     restart: unless-stopped
     depends_on:
       - streamer
@@ -33,6 +42,7 @@ services:
     volumes:
       - ./data:/app/data
       - shared-state:/run/rpie
+    logging: *default-logging
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import os, time; s=os.stat('/run/rpie/state.json'); exit(0 if time.time()-s.st_mtime<300 else 1)"]
@@ -50,6 +60,7 @@ services:
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
     network_mode: host
+    logging: *default-logging
     restart: unless-stopped
     profiles:
       - remote
@@ -65,6 +76,7 @@ services:
       - WATCHTOWER_LABEL_ENABLE=true
       - WATCHTOWER_ROLLING_RESTART=true
       - DOCKER_API_VERSION=1.45
+    logging: *default-logging
     restart: unless-stopped
 
 volumes:
