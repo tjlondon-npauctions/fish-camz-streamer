@@ -68,13 +68,19 @@ fi
 echo ""
 echo "[2/4] Setting up DHCP server for camera auto-discovery..."
 
-if command -v dnsmasq &>/dev/null; then
+# The binary alone isn't enough to go on: dnsmasq-base (pulled in by
+# NetworkManager/libvirt on Debian 13) puts dnsmasq on PATH but ships no
+# /etc/dnsmasq.d and no service, so a binary-only check skips the install
+# and the config write below dies on a missing directory.
+if command -v dnsmasq &>/dev/null && [[ -d /etc/dnsmasq.d ]]; then
     echo "  dnsmasq already installed."
 else
     echo "  Installing dnsmasq..."
     apt-get update -qq
     apt-get install -y -qq dnsmasq > /dev/null 2>&1
 fi
+
+mkdir -p /etc/dnsmasq.d
 
 DNSMASQ_CONF="/etc/dnsmasq.d/camera-dhcp.conf"
 cat > "$DNSMASQ_CONF" << EOF
