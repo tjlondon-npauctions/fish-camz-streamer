@@ -17,7 +17,6 @@ from app.camera.probe import StreamInfo, probe_stream
 from app.config import manager
 from app.streaming.ffmpeg_builder import build_command, _build_rtsp_url
 from app.streaming.health import HealthMonitor, HealthSnapshot
-from app.streaming.playlist import parse_playlist
 from app.streaming.uploader import HLSUploader
 
 logger = logging.getLogger(__name__)
@@ -141,18 +140,6 @@ class StreamEngine:
                         state_dir=state_dir,
                         buffer_segments=hls_cfg.get("buffer_segments", 150),
                         max_unsent_segments=hls_cfg.get("max_unsent_segments", 1000),
-                        segment_duration=hls_cfg.get("segment_duration", 6),
-                        published_playlist_size=hls_cfg.get("published_playlist_size", 10),
-                        max_disk_bytes=hls_cfg.get("max_disk_bytes", 2147483648),
-                        min_free_bytes=hls_cfg.get("min_free_bytes", 1073741824),
-                        live_batch=hls_cfg.get("live_batch", 2),
-                        live_catch_up=hls_cfg.get("live_catch_up", 6),
-                        live_deadline=hls_cfg.get("live_deadline", 30),
-                        backfill_min_interval=hls_cfg.get("backfill_min_interval", 120),
-                        backfill_suspend_backlog=hls_cfg.get("backfill_suspend_backlog", 900),
-                        index_upload_interval=hls_cfg.get("index_upload_interval", 180),
-                        state_persist_interval=hls_cfg.get("state_persist_interval", 30),
-                        max_publish_age=hls_cfg.get("max_publish_age", 600),
                     )
                     self._uploader.start()
                 else:
@@ -324,7 +311,18 @@ class StreamEngine:
         except OSError:
             return 0.0
 
-        segments = parse_playlist("\n".join(lines))
+        segments = []  # [(filename, duration), ...]
+        pending_dur = None
+        for line in lines:
+            line = line.strip()
+            if line.startswith("#EXTINF:"):
+                try:
+                    pending_dur = float(line[len("#EXTINF:"):].split(",", 1)[0])
+                except ValueError:
+                    pending_dur = None
+            elif line and not line.startswith("#") and pending_dur is not None:
+                segments.append((line, pending_dur))
+                pending_dur = None
 
         # Drop the most recent entry — it may still be open for write.
         recent = segments[-(sample_size + 1):-1] if len(segments) > sample_size else segments[:-1]
@@ -333,12 +331,12 @@ class StreamEngine:
 
         total_bytes = 0
         total_seconds = 0.0
-        for entry in recent:
+        for name, dur in recent:
             try:
-                total_bytes += (hls_dir / entry.name).stat().st_size
+                total_bytes += (hls_dir / name).stat().st_size
             except OSError:
                 continue
-            total_seconds += entry.duration
+            total_seconds += dur
 
         if total_seconds <= 0:
             return 0.0
