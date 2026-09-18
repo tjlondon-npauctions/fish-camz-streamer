@@ -66,6 +66,38 @@ class HLSUploader:
         self._last_error = ""
         self._last_upload_time = 0.0
 
+    def _seed_timestamps(self) -> None:
+        """Load the DVR index a previous run left on disk into memory.
+
+        :meth:`_upload_segment_index` republishes ``segments.json`` wholesale
+        from ``_segment_timestamps``, so starting with an empty map would
+        flatten the CDN's copy — and with it the DVR timeline for every
+        segment older than this process. FFmpeg restarts several times a day,
+        so that is routine, not an edge case.
+
+        Entries are a starting point, not a source of truth: a segment still
+        on disk has its timestamp re-derived from mtime when it uploads, which
+        corrects anything stale here.
+        """
+        index_path = self._segment_dir / "segments.json"
+        try:
+            with open(index_path) as f:
+                stored = json.load(f).get("segments", {})
+        except (OSError, ValueError, AttributeError):
+            return
+        if not isinstance(stored, dict):
+            return
+
+        for name, ts in stored.items():
+            if isinstance(name, str) and isinstance(ts, (int, float)):
+                self._segment_timestamps[name] = float(ts)
+
+        if self._segment_timestamps:
+            logger.info(
+                "Seeded %d segment timestamps from the previous DVR index",
+                len(self._segment_timestamps),
+            )
+
     def start(self) -> None:
         """Start the background upload thread."""
         import requests as _requests
@@ -74,6 +106,7 @@ class HLSUploader:
         self._requests = _requests
 
         self._segment_dir.mkdir(parents=True, exist_ok=True)
+        self._seed_timestamps()
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
