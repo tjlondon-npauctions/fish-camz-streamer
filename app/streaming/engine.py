@@ -140,14 +140,19 @@ class StreamEngine:
                         state_dir=state_dir,
                         buffer_segments=hls_cfg.get("buffer_segments", 150),
                         max_unsent_segments=hls_cfg.get("max_unsent_segments", 1000),
+                        catch_up_minutes=hls_cfg.get("catch_up_minutes", 15),
                     )
                     self._uploader.start()
                 else:
                     logger.warning("HLS mode enabled but Bunny CDN not configured — segments will be local only")
 
             # Generate a session ID for unique segment filenames
-            # This prevents CDN collisions when the stream restarts
-            session_id = str(int(time.time()) % 100000)
+            # This prevents CDN collisions when the stream restarts. Full
+            # epoch seconds, not a modulus: `% 100000` repeated every ~27.8h,
+            # so a restart could reuse yesterday's prefix and overwrite that
+            # footage on Bunny (and its segments.json timestamps). It also
+            # keeps name order == start order, which the uploader relies on.
+            session_id = str(int(time.time()))
             self.config.setdefault("hls", {})["session_id"] = session_id
 
             # Probe camera to determine codec strategy

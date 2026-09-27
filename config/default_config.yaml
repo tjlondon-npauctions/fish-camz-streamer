@@ -27,6 +27,7 @@ hls:
   segment_dir: "/app/data/hls" # SD card for buffer persistence (not tmpfs)
   buffer_segments: 150        # keep 150 segments on disk (~15 min at 6s each)
   max_unsent_segments: 1000   # safety cap (~100 min): drop oldest unconditionally beyond this to prevent disk fill during Bunny outages
+  catch_up_minutes: 15        # after an outage, upload only the last N min of backlog; older unsent segments are deleted (null = upload all, 0 = live only)
 
 bunny:
   storage_zone: ""            # Bunny Storage zone name

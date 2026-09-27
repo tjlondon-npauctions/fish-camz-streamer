@@ -46,6 +46,59 @@
     </div>
 </div>
 
+<!-- Internet — judged from our own uploads, no speed tests -->
+<details open>
+    <summary><strong>Internet</strong></summary>
+    <div class="system-stats">
+        <div class="stat-row">
+            <span class="stat-label">Status</span>
+            <span id="link-status">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Upload speed</span>
+            <span id="link-speed">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Failed uploads (5 min)</span>
+            <span id="link-failures">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Ping</span>
+            <span id="net-status">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Latency / loss</span>
+            <span id="net-latency">--</span>
+        </div>
+    </div>
+</details>
+
+<!-- Upload to CDN — what viewers actually see -->
+<details open id="upload-section" class="hidden">
+    <summary><strong>Upload</strong></summary>
+    <div class="system-stats">
+        <div class="stat-row">
+            <span class="stat-label">Viewers' playlist updated</span>
+            <span id="up-playlist">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Waiting to upload</span>
+            <span id="up-backlog">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">After an outage</span>
+            <span id="up-policy">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Upload errors</span>
+            <span id="up-errors">--</span>
+        </div>
+    </div>
+    <button id="btn-skip-backlog" class="outline secondary hidden" onclick="skipBacklog(this)">
+        Skip backlog &rarr; go live
+    </button>
+</details>
+
 <!-- System stats — compact rows -->
 <details open>
     <summary><strong>System</strong></summary>
@@ -65,14 +118,6 @@
         <div class="stat-row">
             <span class="stat-label">Disk</span>
             <span id="sys-disk">--</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Network</span>
-            <span id="net-status">--</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Latency</span>
-            <span id="net-latency">--</span>
         </div>
     </div>
 </details>

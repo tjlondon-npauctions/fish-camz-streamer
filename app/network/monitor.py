@@ -4,12 +4,23 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Pings per check. Five at 0.2s apart gives a loss percentage and jitter for
+# ~400 bytes — negligible even on a capped Starlink plan.
+PING_COUNT = 5
+LOSS_HISTORY = 10  # checks averaged for loss_percent_avg (~5 min at 30s)
+
+_LOSS_RE = re.compile(r"([\d.]+)% packet loss")
+# iputils: "rtt min/avg/max/mdev = 14.8/15.4/16.1/0.5 ms" (macOS says stddev)
+_RTT_RE = re.compile(r"= [\d.]+/([\d.]+)/[\d.]+/([\d.]+)")
 
 
 class NetworkMonitor:
@@ -33,6 +44,9 @@ class NetworkMonitor:
         # State
         self._connected = True
         self._latency_ms = 0.0
+        self._jitter_ms = 0.0
+        self._loss_percent = 0.0
+        self._loss_history: deque[float] = deque(maxlen=LOSS_HISTORY)
         self._last_check = 0.0
         self._outage_start = None
         self._on_recovery_callback = None
@@ -72,6 +86,12 @@ class NetworkMonitor:
         return {
             "connected": self._connected,
             "latency_ms": round(self._latency_ms, 1),
+            "jitter_ms": round(self._jitter_ms, 1),
+            "loss_percent": round(self._loss_percent, 1),
+            "loss_percent_avg": (
+                round(sum(self._loss_history) / len(self._loss_history), 1)
+                if self._loss_history else None
+            ),
             "last_check": self._last_check,
             "in_extended_outage": self.in_extended_outage,
         }
@@ -90,15 +110,16 @@ class NetworkMonitor:
 
         try:
             result = subprocess.run(
-                ["ping", "-c", "1", "-W", "5", self.check_host],
+                ["ping", "-c", str(PING_COUNT), "-i", "0.2", "-W", "5", self.check_host],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=15,
             )
 
-            if result.returncode == 0:
+            self._record_loss(result.stdout)
+            if result.returncode == 0:  # at least one reply
                 self._connected = True
-                self._latency_ms = self._parse_ping_latency(result.stdout)
+                self._latency_ms, self._jitter_ms = self._parse_ping_rtt(result.stdout)
 
                 if not was_connected:
                     was_extended = self.in_extended_outage
@@ -111,6 +132,8 @@ class NetworkMonitor:
                 self._mark_disconnected()
 
         except (subprocess.TimeoutExpired, OSError):
+            self._loss_history.append(100.0)
+            self._loss_percent = 100.0
             self._mark_disconnected()
 
         return self._connected
@@ -121,17 +144,27 @@ class NetworkMonitor:
             self._outage_start = time.time()
         self._connected = False
         self._latency_ms = 0.0
+        self._jitter_ms = 0.0
 
-    def _parse_ping_latency(self, output: str) -> float:
-        """Extract RTT from ping output."""
+    def _record_loss(self, output: str) -> None:
+        match = _LOSS_RE.search(output)
+        self._loss_percent = float(match.group(1)) if match else 100.0
+        self._loss_history.append(self._loss_percent)
+
+    @staticmethod
+    def _parse_ping_rtt(output: str) -> tuple[float, float]:
+        """Average RTT and jitter (mdev) from ping's summary line."""
+        match = _RTT_RE.search(output)
+        if match:
+            return float(match.group(1)), float(match.group(2))
+        # Single-reply output without a summary: fall back to time=
         for line in output.splitlines():
             if "time=" in line:
                 try:
-                    time_part = line.split("time=")[1]
-                    return float(time_part.split()[0])
+                    return float(line.split("time=")[1].split()[0]), 0.0
                 except (IndexError, ValueError):
                     pass
-        return 0.0
+        return 0.0, 0.0
 
     def _write_state(self) -> None:
         try:

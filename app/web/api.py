@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
 from app.camera.discovery import (
     discover_cameras,
@@ -111,7 +112,29 @@ def uploader_status():
             "last_error": "",
             "segments_tracked": 0,
         })
+    # Ages are worked out here, on the Pi's clock, because the browser's
+    # clock can't be compared with it (Patriot's has run hours ahead).
+    now = time.time()
+    published = state.get("playlist_published_at") or 0
+    state["playlist_age_seconds"] = now - published if published else None
+    oldest = state.get("backlog_oldest_mtime")
+    state["backlog_behind_seconds"] = now - oldest if oldest else 0
     return jsonify(state)
+
+
+@api.route("/uploader/skip-backlog", methods=["POST"])
+def uploader_skip_backlog():
+    """Delete buffered segments behind the live edge so uploads resume at live."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Not logged in"}), 401
+
+    from app.streaming.backlog import skip_backlog
+
+    config = manager.load()
+    segment_dir = Path(manager.get(config, "hls", "segment_dir", "/run/rpie/hls"))
+    deleted = skip_backlog(segment_dir)
+    logger.warning("Backlog skipped from the dashboard: deleted %d segments", deleted)
+    return jsonify({"status": "ok", "deleted": deleted})
 
 
 @api.route("/gps")

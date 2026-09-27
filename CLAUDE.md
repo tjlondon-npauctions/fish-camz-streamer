@@ -38,6 +38,9 @@ app/
   streaming/ffmpeg_builder.py — Pure function: config + probe → FFmpeg args
   streaming/engine.py      — FFmpeg subprocess lifecycle + auto-restart
   streaming/health.py      — Parses FFmpeg stderr for metrics
+  streaming/uploader.py    — HLS segments → Bunny: live edge first, then backlog; after an outage keeps only the last hls.catch_up_minutes
+  streaming/backlog.py     — Playlist parsing + "skip backlog" (shared by uploader and web UI)
+  streaming/link_health.py — Judges the link from upload outcomes (down / throttled / Bunny problem) — no speed tests
   network/monitor.py       — Ping-based connectivity checker
   system/stats.py          — CPU/mem/temp/disk via psutil
   web/routes.py            — Flask page routes (dashboard, settings, logs, setup, login)
