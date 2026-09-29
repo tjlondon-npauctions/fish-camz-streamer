@@ -170,6 +170,17 @@ function updateStarlink() {
                 ? '\u2191 ' + formatBitrate(s.uplink_kbps) + ' \u00B7 \u2193 ' + formatBitrate(s.downlink_kbps)
                 : '--');
 
+            // Router WAN counters: everything on the boat, not just this Pi
+            var u = data.usage;
+            if (u) {
+                var pair = function(v) { return '\u2191 ' + formatBytes(v.tx) + ' \u2193 ' + formatBytes(v.rx); };
+                setRow('sl-usage', 'today ' + pair(u.today) + ' \u00B7 30 days ' + pair(u.last_30_days) +
+                       (u.since ? ' (counting since ' + u.since + ')' : ''));
+            } else {
+                setRow('sl-usage', data.usage_status === 'unreachable'
+                    ? 'no Starlink router found' : (data.usage_status || '--'));
+            }
+
             var dish = [s.hardware, s.firmware && 'fw ' + s.firmware, s.class_of_service]
                 .filter(Boolean).join(' \u00B7 ');
             if (s.reboot_hour_local != null) dish += ' \u00B7 update reboots ~' + s.reboot_hour_local + ':00';
@@ -178,6 +189,7 @@ function updateStarlink() {
             var gps = s.gps_valid ? s.gps_sats + ' GPS sats' : (s.gps_valid === false ? 'no GPS fix' : '--');
             var loc = { enabled: 'location on', not_permitted: 'location not enabled in Starlink app',
                         unsupported: 'location not supported', no_fix: 'location allowed, no fix' }[data.location_access];
+            if (s.location_enabled === true && data.location_access !== 'enabled') loc = 'location on in debug data';
             setRow('sl-gps', loc ? gps + ' \u00B7 ' + loc : gps);
         })
         .catch(function() {});

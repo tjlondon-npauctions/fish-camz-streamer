@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Optional
 
 from app.starlink.client import StarlinkClient, StarlinkError
-from app.starlink.summary import summarize
+from app.starlink.summary import payload, summarize
+from app.starlink.usage import UsageLedger, find_wan
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,8 @@ RETRY_SECONDS = {
     "error": 60,
 }
 LOCATION_PROBE_SECONDS = 600
+USAGE_SAMPLE_SECONDS = 60
+USAGE_RETRY_SECONDS = 300  # no Starlink router on this boat (or it's elsewhere)
 
 
 class StarlinkPoller:
@@ -45,6 +48,9 @@ class StarlinkPoller:
         poll_interval: float = 15,
         timeout: float = 5,
         client: Optional[StarlinkClient] = None,
+        router_address: str = "",
+        router_client: Optional[StarlinkClient] = None,
+        usage_path: Optional[str] = None,
     ):
         self.address = address
         self.poll_interval = poll_interval
@@ -54,6 +60,11 @@ class StarlinkPoller:
         self._thread: Optional[threading.Thread] = None
         self._last_logged_status: Optional[str] = None
         self._last_location_probe = 0.0
+        # Data meter from the Starlink router's WAN counters (optional)
+        self._router = router_client or (StarlinkClient(router_address, timeout=timeout) if router_address else None)
+        self._ledger = UsageLedger(Path(usage_path)) if (self._router and usage_path) else None
+        self._next_usage_sample = 0.0
+        self._last_router_status: Optional[str] = None
         self._state: dict = {
             "enabled": True,
             "address": address,
@@ -69,10 +80,13 @@ class StarlinkPoller:
     def stop(self) -> None:
         self._stop.set()
         self._client.close()
+        if self._router:
+            self._router.close()
 
     def poll_once(self) -> float:
         """One poll. Returns seconds until the next one."""
         now = time.time()
+        self._maybe_sample_usage(now)
         try:
             response = self._client.handle({"getStatus": {}})
         except StarlinkError as e:
@@ -82,13 +96,23 @@ class StarlinkPoller:
             self._write()
             return RETRY_SECONDS.get(e.kind, 60)
 
-        summary = summarize(response)
+        # Diagnostics carries overage_rate_limited on current firmware; a dish
+        # that refuses it still gets a status-only summary.
+        try:
+            diagnostics = self._client.handle({"getDiagnostics": {}})
+            self._state["diagnostics_status"] = "ok"
+        except StarlinkError as e:
+            diagnostics = None
+            self._state["diagnostics_status"] = e.kind
+
+        summary = summarize(response, diagnostics)
         self._state.update(
             status="ok",
             reachable=True,
             detail=summary.get("detail"),
             summary=summary,
             raw=response.get("dishGetStatus", {}),
+            raw_diagnostics=_without_coordinates(payload(diagnostics)) if diagnostics else None,
             updated_at=now,
             last_success_at=now,
         )
@@ -109,6 +133,30 @@ class StarlinkPoller:
                 logger.exception("Starlink poller error: %s", e)
                 delay = 60
             self._stop.wait(delay)
+
+    def _maybe_sample_usage(self, now: float) -> None:
+        if not self._ledger or now < self._next_usage_sample:
+            return
+        try:
+            reading = find_wan(payload(self._router.handle({"getNetworkInterfaces": {}})))
+        except StarlinkError as e:
+            self._state["usage_status"] = e.kind
+            self._next_usage_sample = now + USAGE_RETRY_SECONDS
+            if e.kind != self._last_router_status:
+                self._last_router_status = e.kind
+                logger.info("Starlink router data meter: %s — %s", e.kind, e)
+            return
+        self._next_usage_sample = now + USAGE_SAMPLE_SECONDS
+        if reading is None:
+            self._state["usage_status"] = "no_wan_interface"
+            return
+        if self._last_router_status != "ok":
+            self._last_router_status = "ok"
+            logger.info("Starlink router data meter: reading %s", reading["name"])
+        self._ledger.record(reading, now)
+        self._ledger.save()
+        self._state["usage_status"] = "ok"
+        self._state["usage"] = self._ledger.summary(now)
 
     def _probe_location(self, now: float) -> None:
         """Record whether location is available on this dish. Coordinates
@@ -140,11 +188,19 @@ class StarlinkPoller:
             logger.debug("Could not write Starlink state: %s", e)
 
 
+def _without_coordinates(diag: dict) -> dict:
+    """Diagnostics minus position — dish GPS use is a separate, later step."""
+    diag = dict(diag or {})
+    if isinstance(diag.get("location"), dict):
+        diag["location"] = {"enabled": diag["location"].get("enabled")}
+    return diag
+
+
 def for_heartbeat(state: dict) -> dict:
-    """The part of starlink.json worth sending over a metered link (~300 bytes)."""
+    """The part of starlink.json worth sending over a metered link (<1 KB)."""
     if not state:
         return {}
     out = {k: state.get(k) for k in ("status", "reachable", "detail", "updated_at",
-                                     "last_success_at", "location_access")}
+                                     "last_success_at", "location_access", "usage", "usage_status")}
     out["summary"] = state.get("summary") or {}
     return {k: v for k, v in out.items() if v is not None}

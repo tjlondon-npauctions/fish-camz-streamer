@@ -1,0 +1,7 @@
+{"apiVersion": "131", "getNetworkInterfaces": {"networkInterfaces": [
+  {"name": "lan0", "rxStats": {}, "txStats": {}, "up": true, "ethernet": {"autonegotiationOn": true}},
+  {"name": "lan1", "rxStats": {"bytes": "142488119", "packets": "638099"}, "txStats": {"bytes": "62015124", "packets": "410150"}, "up": true, "ethernet": {"linkDetected": true, "speedMbps": 1000}},
+  {"name": "wan0", "rxStats": {"bytes": "565114755", "packets": "2950433"}, "txStats": {"bytes": "325779715", "packets": "2213633"}, "up": true, "ethernet": {"linkDetected": true, "speedMbps": 1000}},
+  {"name": "ra0", "rxStats": {"bytes": "86026"}, "txStats": {"bytes": "95252"}, "up": true, "wifi": {"channel": 11}},
+  {"name": "rax0", "rxStats": {"bytes": "17250364"}, "txStats": {"bytes": "108855761"}, "up": true, "wifi": {"channel": 48}}
+]}}

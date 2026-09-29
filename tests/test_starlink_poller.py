@@ -2,6 +2,7 @@
 shares a container with the heartbeat."""
 
 import json
+from pathlib import Path
 import logging
 
 import pytest
@@ -11,20 +12,30 @@ from app.starlink.poller import RETRY_SECONDS, StarlinkPoller, for_heartbeat
 from test_starlink_summary import TUNA
 
 
-class ScriptedClient:
-    """Stands in for StarlinkClient: returns or raises per request name."""
+DIAGNOSTICS = {"dishGetDiagnostics": {"hardwareSelfTest": "PASSED", "disablementCode": "OKAY",
+                                      "overageRateLimited": False,
+                                      "location": {"enabled": False}}}
 
-    def __init__(self, status=TUNA, location=None):
-        self.status = status
-        self.location = location
+
+class ScriptedClient:
+    """Stands in for StarlinkClient: per-request result or StarlinkError."""
+
+    def __init__(self, status=TUNA, location=None, diagnostics=DIAGNOSTICS, **others):
+        self.results = {"getStatus": status, "getLocation": location, "getDiagnostics": diagnostics, **others}
         self.sent = []
+
+    @property
+    def status(self):
+        return self.results["getStatus"]
 
     def handle(self, request):
         name = next(iter(request))
         self.sent.append(name)
-        result = self.status if name == "getStatus" else self.location
+        result = self.results.get(name)
         if isinstance(result, StarlinkError):
             raise result
+        if result is None:
+            raise StarlinkError("unsupported", f"no {name}")
         return result
 
     def close(self):
@@ -140,3 +151,75 @@ def test_api_requires_login(tmp_path, monkeypatch):
         s["authenticated"] = True
     body = client.get("/api/starlink").get_json()
     assert body["status"] == "ok" and body["updated_age_seconds"] < 5
+
+
+ROUTER = json.loads((Path(__file__).parent / "fixtures" / "starlink_router_interfaces_vendetta.json").read_text())
+
+
+def with_router(tmp_path, dish=None, router=None):
+    return StarlinkPoller(state_dir=str(tmp_path), poll_interval=15,
+                          client=dish or ScriptedClient(location=StarlinkError("not_permitted", "no")),
+                          router_client=router, usage_path=str(tmp_path / "usage.json"))
+
+
+class TestDiagnosticsInPoller:
+    def test_overage_from_diagnostics_reaches_the_verdict(self, tmp_path):
+        d = {"dishGetDiagnostics": {"overageRateLimited": True, "disablementCode": "OKAY"}}
+        p = poller(tmp_path, ScriptedClient(diagnostics=d, location=StarlinkError("not_permitted", "no")))
+        p.poll_once()
+        assert state(tmp_path)["summary"]["state"] == "rate_limited"
+
+    def test_dish_refusing_diagnostics_still_works(self, tmp_path):
+        p = poller(tmp_path, ScriptedClient(diagnostics=StarlinkError("not_permitted", "no"),
+                                            location=StarlinkError("not_permitted", "no")))
+        p.poll_once()
+        s = state(tmp_path)
+        assert s["status"] == "ok" and s["diagnostics_status"] == "not_permitted"
+
+    def test_raw_diagnostics_never_holds_coordinates(self, tmp_path):
+        d = {"dishGetDiagnostics": {"location": {"enabled": True, "latitude": 32.894321, "longitude": -117.124556}}}
+        p = poller(tmp_path, ScriptedClient(diagnostics=d, location=StarlinkError("not_permitted", "no")))
+        p.poll_once()
+        text = (tmp_path / "starlink.json").read_text()
+        assert "32.894" not in text and "117.12" not in text
+        assert state(tmp_path)["raw_diagnostics"]["location"] == {"enabled": True}
+
+
+class TestRouterMeter:
+    def test_meter_accumulates_across_polls(self, tmp_path, monkeypatch):
+        import copy
+        import app.starlink.poller as mod
+        router = ScriptedClient(getNetworkInterfaces=ROUTER)
+        p = with_router(tmp_path, router=router)
+        clock = [1790640100.0]
+        monkeypatch.setattr(mod.time, "time", lambda: clock[0])
+        p.poll_once()  # baseline
+        later = copy.deepcopy(ROUTER)
+        wan = later["getNetworkInterfaces"]["networkInterfaces"][2]
+        wan["txStats"]["bytes"] = str(int(wan["txStats"]["bytes"]) + 5_000_000)
+        router.results["getNetworkInterfaces"] = later
+        clock[0] += 61
+        p.poll_once()
+        usage = state(tmp_path)["usage"]
+        assert usage["today"]["tx"] == 5_000_000 and usage["interface"] == "wan0"
+        assert for_heartbeat(state(tmp_path))["usage"]["today"]["tx"] == 5_000_000
+
+    def test_router_sampled_once_a_minute_not_every_poll(self, tmp_path):
+        router = ScriptedClient(getNetworkInterfaces=ROUTER)
+        p = with_router(tmp_path, router=router)
+        for _ in range(4):
+            p.poll_once()
+        assert router.sent.count("getNetworkInterfaces") == 1
+
+    def test_no_router_is_quiet_and_backs_off(self, tmp_path):
+        router = ScriptedClient(getNetworkInterfaces=StarlinkError("unreachable", "no router"))
+        p = with_router(tmp_path, router=router)
+        p.poll_once()
+        assert state(tmp_path)["usage_status"] == "unreachable"
+        assert state(tmp_path)["status"] == "ok"  # dish unaffected
+
+    def test_router_works_even_when_dish_is_unreachable(self, tmp_path):
+        router = ScriptedClient(getNetworkInterfaces=ROUTER)
+        p = with_router(tmp_path, dish=ScriptedClient(status=StarlinkError("unreachable", "x")), router=router)
+        p.poll_once()
+        assert state(tmp_path)["usage_status"] == "ok"

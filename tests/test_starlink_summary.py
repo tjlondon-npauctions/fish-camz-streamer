@@ -47,7 +47,8 @@ class TestVerdicts:
 
     def test_restricted_reason(self):
         s = summarize(with_status(ulBandwidthRestrictedReason="OVERAGE_LIMIT"))
-        assert s["state"] == RATE_LIMITED and "upload OVERAGE_LIMIT" in s["detail"]
+        assert s["state"] == RATE_LIMITED
+        assert "upload data allowance used up (OVERAGE_LIMIT)" in s["detail"]
 
     def test_disabled_account_outranks_everything(self):
         s = summarize(with_status(disablementCode="NO_ACTIVE_ACCOUNT", overageRateLimited=True))
@@ -86,3 +87,53 @@ class TestOlderOrStrangerFirmware:
     def test_nan_and_string_numbers(self):
         s = summarize(with_status(popPingLatencyMs="NaN", deviceState={"uptimeS": "12"}))
         assert "pop_latency_ms" not in s and s["uptime_s"] == 12
+
+
+def diag(**fields):
+    return {"apiVersion": "43", "dishGetDiagnostics": fields}
+
+
+class TestDiagnostics:
+    """fw 2026.09 puts the overage flag and the fuller disablement enum in
+    getDiagnostics, not getStatus — status alone would miss Patriot's case."""
+
+    def test_overage_flag_from_diagnostics(self):
+        s = summarize(TUNA, diag(overageRateLimited=True))
+        assert s["state"] == RATE_LIMITED and s["overage_rate_limited"] is True
+
+    def test_diagnostics_flag_overrides_status(self):
+        r = with_status(overageRateLimited=True)
+        assert summarize(r, diag(overageRateLimited=False))["state"] == OK
+
+    def test_overage_sandbox_is_rate_limited_not_disabled(self):
+        s = summarize(TUNA, diag(disablementCode="DATA_OVERAGE_SANDBOX_POLICY"))
+        assert s["state"] == RATE_LIMITED and "sandboxed" in s["detail"]
+
+    def test_boat_specific_disablement_is_readable(self):
+        s = summarize(TUNA, diag(disablementCode="ROAM_RESTRICTED"))
+        assert s["state"] == DISABLED
+        assert s["detail"] == "Starlink service disabled: roaming restricted (ROAM_RESTRICTED)"
+
+    def test_unknown_future_code_still_reported(self):
+        s = summarize(TUNA, diag(disablementCode="SOMETHING_NEW"))
+        assert s["state"] == DISABLED and "SOMETHING_NEW" in s["detail"]
+
+    def test_location_enabled_flag(self):
+        s = summarize(TUNA, diag(location={"enabled": True, "latitude": 1.0, "longitude": 2.0}))
+        assert s["location_enabled"] is True
+        assert "latitude" not in str(s) and "1.0" not in str(s.get("location_enabled"))
+
+    def test_self_test_failure_is_an_alert(self):
+        s = summarize(TUNA, diag(hardwareSelfTest="FAILED"))
+        assert s["state"] == ALERT and "self-test" in s["detail"]
+
+    def test_diagnostics_alerts_merge(self):
+        s = summarize(TUNA, diag(alerts={"dishThermalThrottle": True, "obstructed": False}))
+        assert s["alerts"] == ["dishThermalThrottle"]
+
+    def test_stowed(self):
+        assert summarize(TUNA, diag(stowed=True))["state"] == NOT_READY
+
+    def test_low_speed_policy_label(self):
+        s = summarize(with_status(ulBandwidthRestrictedReason="LOW_SPEED_POLICY_LIMIT"))
+        assert s["state"] == RATE_LIMITED and "low-speed policy" in s["detail"]

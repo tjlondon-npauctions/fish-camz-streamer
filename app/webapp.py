@@ -71,6 +71,9 @@ def main() -> None:
                     state_dir=manager.get(config, "system", "state_dir", "/run/rpie"),
                     address=starlink_cfg.get("address", "192.168.100.1:9200"),
                     poll_interval=starlink_cfg.get("poll_interval", 15),
+                    router_address=starlink_cfg.get("router_address", "192.168.1.1:9000"),
+                    # SD card, not tmpfs: daily totals must survive reboots
+                    usage_path=str(manager.DATA_DIR / "starlink_usage.json"),
                 ).start()
             except Exception as e:
                 logging.getLogger(__name__).warning("Starlink poller not started: %s", e)

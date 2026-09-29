@@ -59,6 +59,7 @@ starlink:
   enabled: true               # poll a Starlink dish on the LAN, if one answers (read-only)
   address: "192.168.100.1:9200"  # dish gRPC address; change if this boat's network puts it elsewhere
   poll_interval: 15           # seconds between status polls (LAN only — no Starlink data used)
+  router_address: "192.168.1.1:9000"  # Starlink router, for the data meter; "" to disable
 
 network:
   check_interval: 30          # seconds between connectivity checks

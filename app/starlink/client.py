@@ -25,7 +25,11 @@ METHOD = f"/{SERVICE}/Handle"
 
 # Requests we're willing to send. Anything else is refused before it reaches
 # the dish, so a caller can't be tricked into sending a reboot.
-READ_ONLY_REQUESTS = frozenset({"getStatus", "getHistory", "getLocation", "getDeviceInfo"})
+READ_ONLY_REQUESTS = frozenset({
+    "getStatus", "getHistory", "getLocation", "getDeviceInfo",
+    "getDiagnostics",        # overage_rate_limited, disablement code, location enabled
+    "getNetworkInterfaces",  # router WAN byte counters (data meter)
+})
 
 
 class StarlinkError(Exception):
