@@ -79,3 +79,8 @@ def test_old_days_pruned(tmp_path):
     ledger.data["days"]["2026-01-01"] = {"rx": 1, "tx": 1}
     ledger.record(reading(0, 0), T0)
     assert "2026-01-01" not in ledger.data["days"]
+
+
+def test_summary_carries_utc_dates(tmp_path):
+    s = UsageLedger(tmp_path / "u.json").summary(T0 + 100)
+    assert s["date"] == "2026-09-29" and s["yesterday_date"] == "2026-09-28"

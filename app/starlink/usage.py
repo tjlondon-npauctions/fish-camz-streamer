@@ -106,6 +106,9 @@ class UsageLedger:
                 last30["rx"] += v.get("rx", 0)
                 last30["tx"] += v.get("tx", 0)
         return {
+            # UTC dates, so the cloud can file each total under its own day
+            "date": today,
+            "yesterday_date": yesterday,
             "today": days.get(today, {"rx": 0, "tx": 0}),
             "yesterday": days.get(yesterday, {"rx": 0, "tx": 0}),
             "last_30_days": last30,
