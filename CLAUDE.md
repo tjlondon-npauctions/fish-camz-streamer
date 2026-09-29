@@ -42,6 +42,9 @@ app/
   streaming/backlog.py     — Playlist parsing + "skip backlog" (shared by uploader and web UI)
   streaming/link_health.py — Judges the link from upload outcomes (down / throttled / Bunny problem) — no speed tests
   network/monitor.py       — Ping-based connectivity checker
+  starlink/client.py       — Read-only dish gRPC client (reflection; only get* requests; hard timeouts)
+  starlink/summary.py      — Dish status → compact summary + verdict (rate limited / obstructed / …)
+  starlink/poller.py       — Web-container thread → /run/rpie/starlink.json; "no dish" is a state, not an error
   system/stats.py          — CPU/mem/temp/disk via psutil
   web/routes.py            — Flask page routes (dashboard, settings, logs, setup, login)
   web/api.py               — JSON API endpoints (/api/status, /api/stream/*, etc.)

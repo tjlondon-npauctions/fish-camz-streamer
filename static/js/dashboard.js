@@ -102,6 +102,87 @@ function updateSystemStats() {
         .catch(function() {});
 }
 
+// Latest Starlink verdict, folded into the Internet status so "Throttled"
+// comes with Starlink's reason when it has one
+var starlinkIssue = null;
+
+var STARLINK_STATES = {
+    ok:           ['OK', 'text-success'],
+    rate_limited: ['Rate limited', 'text-error'],
+    obstructed:   ['Obstructed', 'text-error'],
+    not_ready:    ['Not ready', 'text-error'],
+    disabled:     ['Service disabled', 'text-error'],
+    alert:        ['Alert', 'text-warning']
+};
+
+var STARLINK_FAILURES = {
+    unreachable:   'No dish found at ',
+    not_permitted: 'Dish refused the request',
+    unsupported:   'This dish/firmware doesn\u2019t support the API',
+    unavailable:   'Starlink support not installed in this image',
+    error:         'Error talking to the dish',
+    starting:      'Looking for a dish\u2026'
+};
+
+function setRow(id, text, cls) {
+    var el = document.getElementById(id);
+    el.textContent = text;
+    el.className = cls || '';
+}
+
+function updateStarlink() {
+    fetch('/api/starlink')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            var section = document.getElementById('starlink-section');
+            if (!data || data.status === 'disabled') {
+                section.className = 'hidden';
+                starlinkIssue = null;
+                return;
+            }
+            section.className = '';
+            var s = data.summary || {};
+            var stale = data.updated_age_seconds > 120;
+
+            if (data.status !== 'ok') {
+                var msg = STARLINK_FAILURES[data.status] || data.status;
+                if (data.status === 'unreachable') msg += data.address;
+                if (data.detail && data.status !== 'unreachable') msg += ' \u2014 ' + data.detail;
+                if (data.last_success_at) msg += ' (last seen ' + formatAge(data.last_success_age_seconds) + ')';
+                setRow('sl-status', msg, data.status === 'unreachable' ? '' : 'text-warning');
+                starlinkIssue = null;
+            } else {
+                var st = STARLINK_STATES[s.state] || [s.state, ''];
+                setRow('sl-status', st[0] + ' \u2014 ' + s.detail + (stale ? ' (stale)' : ''), st[1]);
+                starlinkIssue = s.state && s.state !== 'ok' ? 'Starlink: ' + s.detail : null;
+            }
+
+            var lat = s.pop_latency_ms != null ? s.pop_latency_ms + ' ms' : '--';
+            if (s.pop_drop_rate != null) lat += ' \u00B7 ' + (s.pop_drop_rate * 100).toFixed(1) + '% drops';
+            setRow('sl-latency', lat);
+
+            var obs = s.obstruction_fraction != null ? (s.obstruction_fraction * 100).toFixed(2) + '% of sky' : '--';
+            if (s.currently_obstructed) obs += ' \u00B7 obstructed now';
+            setRow('sl-obstruction', obs, s.currently_obstructed ? 'text-error'
+                : s.obstruction_fraction >= 0.01 ? 'text-warning' : '');
+
+            setRow('sl-throughput', s.uplink_kbps != null
+                ? '\u2191 ' + formatBitrate(s.uplink_kbps) + ' \u00B7 \u2193 ' + formatBitrate(s.downlink_kbps)
+                : '--');
+
+            var dish = [s.hardware, s.firmware && 'fw ' + s.firmware, s.class_of_service]
+                .filter(Boolean).join(' \u00B7 ');
+            if (s.reboot_hour_local != null) dish += ' \u00B7 update reboots ~' + s.reboot_hour_local + ':00';
+            setRow('sl-dish', dish || '--');
+
+            var gps = s.gps_valid ? s.gps_sats + ' GPS sats' : (s.gps_valid === false ? 'no GPS fix' : '--');
+            var loc = { enabled: 'location on', not_permitted: 'location not enabled in Starlink app',
+                        unsupported: 'location not supported', no_fix: 'location allowed, no fix' }[data.location_access];
+            setRow('sl-gps', loc ? gps + ' \u00B7 ' + loc : gps);
+        })
+        .catch(function() {});
+}
+
 // Last ping result, so the link verdict can tell "no internet" from
 // "internet fine, but Bunny unreachable"
 var pingConnected = null;
@@ -249,6 +330,9 @@ function updateLink(link) {
     if (link.status === 'down' && pingConnected) {
         detail += ' (ping still works \u2014 suspect DNS or Bunny, not the boat\u2019s internet)';
     }
+    if (starlinkIssue && link.status !== 'ok') {
+        detail += ' \u00B7 ' + starlinkIssue;
+    }
     status.textContent = s[0] + ' \u2014 ' + detail;
     status.className = s[1];
 
@@ -350,6 +434,7 @@ updateStreamStatus();
 updateSystemStats();
 updateNetworkStatus();
 updateUploader();
+updateStarlink();
 loadVersion();
 
 // Polling intervals
@@ -357,3 +442,4 @@ setInterval(updateStreamStatus, 3000);
 setInterval(updateSystemStats, 10000);
 setInterval(updateNetworkStatus, 10000);
 setInterval(updateUploader, 5000);
+setInterval(updateStarlink, 15000);

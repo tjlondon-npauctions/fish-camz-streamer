@@ -122,6 +122,22 @@ def uploader_status():
     return jsonify(state)
 
 
+@api.route("/starlink")
+def starlink_status():
+    """Dish status from the Starlink poller. Login required: it includes the
+    dish ID, and later dish location — the rest of /api predates that rule."""
+    if not session.get("authenticated"):
+        return jsonify({"error": "Not logged in"}), 401
+    state = _read_state_file("starlink.json")
+    if not state:
+        return jsonify({"enabled": False, "status": "disabled"})
+    now = time.time()
+    for key in ("updated_at", "last_success_at"):
+        if state.get(key):
+            state[key.replace("_at", "_age_seconds")] = now - state[key]
+    return jsonify(state)
+
+
 @api.route("/uploader/skip-backlog", methods=["POST"])
 def uploader_skip_backlog():
     """Delete buffered segments behind the live edge so uploads resume at live."""

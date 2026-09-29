@@ -55,6 +55,11 @@ stream:
   stable_threshold: 60        # seconds of stable streaming to reset backoff
   stall_timeout: 30           # seconds of no frames before declaring stall
 
+starlink:
+  enabled: true               # poll a Starlink dish on the LAN, if one answers (read-only)
+  address: "192.168.100.1:9200"  # dish gRPC address; change if this boat's network puts it elsewhere
+  poll_interval: 15           # seconds between status polls (LAN only — no Starlink data used)
+
 network:
   check_interval: 30          # seconds between connectivity checks
   check_host: "1.1.1.1"

@@ -60,6 +60,21 @@ def main() -> None:
             )
             gps_reader.start()
 
+        # Start the Starlink dish poller (if a dish is there, we'll find it).
+        # Guarded separately: this container also sends the heartbeat, and a
+        # vessel whose heartbeat stops looks offline to viewers.
+        starlink_cfg = config.get("starlink", {})
+        if starlink_cfg.get("enabled", True):
+            try:
+                from app.starlink.poller import StarlinkPoller
+                StarlinkPoller(
+                    state_dir=manager.get(config, "system", "state_dir", "/run/rpie"),
+                    address=starlink_cfg.get("address", "192.168.100.1:9200"),
+                    poll_interval=starlink_cfg.get("poll_interval", 15),
+                ).start()
+            except Exception as e:
+                logging.getLogger(__name__).warning("Starlink poller not started: %s", e)
+
         # Start heartbeat to Fishcamz backend (if configured)
         from app.heartbeat import HeartbeatSender
         heartbeat = HeartbeatSender(config)

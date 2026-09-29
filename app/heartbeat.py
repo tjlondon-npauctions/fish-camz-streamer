@@ -76,12 +76,22 @@ def build_payload(config: dict) -> dict:
         "uploader": _read_state_file(state_dir, "uploader.json"),
         "network": _read_state_file(state_dir, "network.json"),
         "gps": _read_state_file(state_dir, "gps.json"),
+        "starlink": _starlink_summary(state_dir),
         "bunny_stream_path": config.get("bunny", {}).get("stream_path", "live"),
         "bunny_cdn_url": config.get("bunny", {}).get("cdn_url", ""),
         "output_mode": config.get("output", {}).get("mode", "rtmp"),
         "tunnel_url": config.get("remote_access", {}).get("tunnel_url", ""),
         "timestamp": time.time(),
     }
+
+
+def _starlink_summary(state_dir: str) -> dict:
+    """Compact dish summary — never the raw status (metered link)."""
+    try:
+        from app.starlink.poller import for_heartbeat
+        return for_heartbeat(_read_state_file(state_dir, "starlink.json"))
+    except Exception:
+        return {}
 
 
 def _read_state_file(state_dir: str, filename: str) -> dict:
