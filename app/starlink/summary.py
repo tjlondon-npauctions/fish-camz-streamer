@@ -39,6 +39,18 @@ DISABLEMENT_LABELS = {
     "OUTSIDE_HOME_REGION": "outside home region",
 }
 
+# Alerts that are informational, not a problem with the link. Prenup's Mini
+# reported obstructionMapReset after a reboot and was flagged as an alert on
+# a healthy connection. Anything NOT listed still raises the verdict, so an
+# alert new firmware adds is surfaced rather than hidden; extend as we learn.
+INFO_ALERTS = frozenset({
+    "obstructionMapReset",       # sky map rebuilt (reboot / moved)
+    "isHeating", "dishIsHeating",  # snow-melt heating
+    "installPending", "softwareInstallPending",  # update waiting for the reboot window
+    "isPowerSaveIdle",           # scheduled power-save
+    "roaming",
+})
+
 # Verdicts, most serious first
 DISABLED = "disabled"          # account/service problem (disablementCode)
 NOT_READY = "not_ready"        # booting, searching, no signal
@@ -137,16 +149,21 @@ def verdict(s: dict) -> tuple[str, str]:
     if s.get("currently_obstructed") is True or "obstructed" in s.get("alerts", []):
         return OBSTRUCTED, "Dish is obstructed right now"
 
-    alerts = [a for a in s.get("alerts", []) if a != "obstructed"]
+    all_alerts = [a for a in s.get("alerts", []) if a != "obstructed"]
+    alerts = [a for a in all_alerts if a not in INFO_ALERTS]
+    notes = [a for a in all_alerts if a in INFO_ALERTS]
     if s.get("hardware_self_test") == "FAILED":
         alerts.append("hardware self-test failed")
     if alerts:
         return ALERT, "Dish alerts: " + ", ".join(alerts)
 
+    detail = "Connected"
     fraction = s.get("obstruction_fraction")
     if fraction is not None and fraction >= 0.01:
-        return OK, f"Connected ({fraction * 100:.1f}% of sky obstructed)"
-    return OK, "Connected"
+        detail += f" ({fraction * 100:.1f}% of sky obstructed)"
+    if notes:
+        detail += " · note: " + ", ".join(notes)
+    return OK, detail
 
 
 def _find_flag(obj: Any, key: str) -> Optional[bool]:

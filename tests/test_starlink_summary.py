@@ -137,3 +137,20 @@ class TestDiagnostics:
     def test_low_speed_policy_label(self):
         s = summarize(with_status(ulBandwidthRestrictedReason="LOW_SPEED_POLICY_LIMIT"))
         assert s["state"] == RATE_LIMITED and "low-speed policy" in s["detail"]
+
+
+class TestInformationalAlerts:
+    def test_prenup_obstruction_map_reset_is_not_a_problem(self):
+        # Real output from Prenup's Starlink Mini (mini1_panda_prod2), 2026-09-29
+        s = summarize(with_status(alerts={"obstructionMapReset": True}))
+        assert s["state"] == OK
+        assert s["detail"] == "Connected · note: obstructionMapReset"
+        assert s["alerts"] == ["obstructionMapReset"]  # still reported
+
+    def test_real_alert_alongside_info_alert(self):
+        s = summarize(with_status(alerts={"obstructionMapReset": True, "motorsStuck": True}))
+        assert s["state"] == ALERT and s["detail"] == "Dish alerts: motorsStuck"
+
+    def test_unknown_alert_is_surfaced(self):
+        s = summarize(with_status(alerts={"somethingNewFromFirmware": True}))
+        assert s["state"] == ALERT
