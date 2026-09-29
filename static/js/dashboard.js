@@ -170,6 +170,22 @@ function updateStarlink() {
                 ? '\u2191 ' + formatBitrate(s.uplink_kbps) + ' \u00B7 \u2193 ' + formatBitrate(s.downlink_kbps)
                 : '--');
 
+            // Sub-second satellite-handover blips are normal; call out real outages
+            var outs = data.outages || [];
+            var notable = outs.filter(function(o) { return o.d >= 5; });
+            if (!data.history_status || data.history_status === 'ok') {
+                var text = (outs.length - notable.length) + ' brief dropouts';
+                if (notable.length) {
+                    var last = notable[notable.length - 1];
+                    text += ' \u00B7 ' + notable.length + ' outage' + (notable.length > 1 ? 's' : '') +
+                        ' \u2265 5 s (latest: ' + last.cause.toLowerCase().replace(/_/g, ' ') + ', ' +
+                        Math.round(last.d) + ' s)';
+                }
+                setRow('sl-outages', text, notable.length ? 'text-warning' : '');
+            } else {
+                setRow('sl-outages', 'history not available (' + data.history_status + ')');
+            }
+
             // Router WAN counters: everything on the boat, not just this Pi
             var u = data.usage;
             if (u) {

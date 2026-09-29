@@ -223,3 +223,43 @@ class TestRouterMeter:
         p = with_router(tmp_path, dish=ScriptedClient(status=StarlinkError("unreachable", "x")), router=router)
         p.poll_once()
         assert state(tmp_path)["usage_status"] == "ok"
+
+
+class TestHistoryInPoller:
+    def history(self, now):
+        ring = [0.02] * 900
+        return {"dishGetHistory": {"current": "5000", "popPingDropRate": ring, "popPingLatencyMs": [30.0] * 900,
+                                   "eventLog": {"events": [
+                                       {"reason": "EVENT_REASON_OUTAGE_NO_PINGS",
+                                        "startTimestampNs": str(int((now - 120) * 1e9)), "durationNs": "800000000"},
+                                       {"reason": "EVENT_REASON_OUTAGE_OBSTRUCTED",
+                                        "startTimestampNs": str(int((now - 7200) * 1e9)), "durationNs": "42000000000"},
+                                   ]}}}
+
+    def test_drop_rate_and_outages(self, tmp_path):
+        import time as _t
+        now = _t.time()
+        client = ScriptedClient(location=StarlinkError("not_permitted", "no"), getHistory=self.history(now))
+        p = poller(tmp_path, client)
+        p.poll_once()
+        s = state(tmp_path)
+        assert s["summary"]["pop_drop_rate"] == 0.02
+        assert s["summary"]["pop_latency_1m_ms"] == 30.0
+        assert [o["cause"] for o in s["outages"]] == ["OBSTRUCTED", "NO_PINGS"]
+        hb = for_heartbeat(s)["outages"]
+        assert {o["cause"] for o in hb} == {"OBSTRUCTED", "NO_PINGS"}
+
+    def test_history_read_once_a_minute(self, tmp_path):
+        import time as _t
+        client = ScriptedClient(location=StarlinkError("not_permitted", "no"), getHistory=self.history(_t.time()))
+        p = poller(tmp_path, client)
+        for _ in range(4):
+            p.poll_once()
+        assert client.sent.count("getHistory") == 1
+
+    def test_dish_without_history_still_polls(self, tmp_path):
+        p = poller(tmp_path, ScriptedClient(location=StarlinkError("not_permitted", "no")))
+        p.poll_once()
+        s = state(tmp_path)
+        assert s["status"] == "ok" and s["history_status"] == "unsupported"
+        assert "outages" not in for_heartbeat(s)

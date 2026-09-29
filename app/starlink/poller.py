@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from app.starlink import history
 from app.starlink.client import StarlinkClient, StarlinkError
 from app.starlink.summary import payload, summarize
 from app.starlink.usage import UsageLedger, find_wan
@@ -36,6 +37,9 @@ RETRY_SECONDS = {
     "error": 60,
 }
 LOCATION_PROBE_SECONDS = 600
+HISTORY_SECONDS = 60          # getHistory is ~60 KB — once a minute is plenty
+HISTORY_RETRY_SECONDS = 600
+KEEP_OUTAGES_S = 48 * 3600    # shown on the Pi dashboard
 USAGE_SAMPLE_SECONDS = 60
 USAGE_RETRY_SECONDS = 300  # no Starlink router on this boat (or it's elsewhere)
 
@@ -64,6 +68,7 @@ class StarlinkPoller:
         self._router = router_client or (StarlinkClient(router_address, timeout=timeout) if router_address else None)
         self._ledger = UsageLedger(Path(usage_path)) if (self._router and usage_path) else None
         self._next_usage_sample = 0.0
+        self._next_history = 0.0
         self._last_router_status: Optional[str] = None
         self._state: dict = {
             "enabled": True,
@@ -105,7 +110,15 @@ class StarlinkPoller:
             diagnostics = None
             self._state["diagnostics_status"] = e.kind
 
+        self._maybe_read_history(now)
         summary = summarize(response, diagnostics)
+        recent = self._state.get("history") or {}
+        if "drop_rate" in recent:
+            # Mean over the last minute from the 1 Hz history — steadier than
+            # getStatus's instantaneous reading, and status has no drop rate
+            summary["pop_drop_rate"] = round(recent["drop_rate"], 4)
+        if "latency_ms" in recent:
+            summary["pop_latency_1m_ms"] = round(recent["latency_ms"], 1)
         self._state.update(
             status="ok",
             reachable=True,
@@ -133,6 +146,20 @@ class StarlinkPoller:
                 logger.exception("Starlink poller error: %s", e)
                 delay = 60
             self._stop.wait(delay)
+
+    def _maybe_read_history(self, now: float) -> None:
+        if now < self._next_history:
+            return
+        try:
+            body = payload(self._client.handle({"getHistory": {}}))
+        except StarlinkError as e:
+            self._state["history_status"] = e.kind
+            self._next_history = now + HISTORY_RETRY_SECONDS
+            return
+        self._next_history = now + HISTORY_SECONDS
+        self._state["history_status"] = "ok"
+        self._state["history"] = history.recent_window(body)
+        self._state["outages"] = [e for e in history.outage_events(body) if now - e["t"] <= KEEP_OUTAGES_S]
 
     def _maybe_sample_usage(self, now: float) -> None:
         if not self._ledger or now < self._next_usage_sample:
@@ -203,4 +230,7 @@ def for_heartbeat(state: dict) -> dict:
     out = {k: state.get(k) for k in ("status", "reachable", "detail", "updated_at",
                                      "last_success_at", "location_access", "usage", "usage_status")}
     out["summary"] = state.get("summary") or {}
+    outages = history.for_heartbeat(state.get("outages") or [], time.time())
+    if outages:
+        out["outages"] = outages
     return {k: v for k, v in out.items() if v is not None}
