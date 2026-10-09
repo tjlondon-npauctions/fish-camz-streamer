@@ -44,7 +44,8 @@ app/
   network/monitor.py       — Ping-based connectivity checker
   starlink/client.py       — Read-only dish gRPC client (reflection; only get* requests; hard timeouts)
   starlink/summary.py      — Dish status → compact summary + verdict (rate limited / obstructed / …)
-  starlink/poller.py       — Web-container thread → /run/rpie/starlink.json; "no dish" is a state, not an error
+  starlink/poller.py       — Dish/router poller → /run/rpie/starlink.json; "no dish" is a state, not an error
+  starlink/supervisor.py   — Runs the poller as a child process of the web app (a native grpc crash can't stop heartbeats)
   starlink/usage.py        — Data meter: Starlink router WAN byte counters → per-day totals in data/starlink_usage.json
   system/stats.py          — CPU/mem/temp/disk via psutil
   web/routes.py            — Flask page routes (dashboard, settings, logs, setup, login)

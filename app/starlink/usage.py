@@ -16,6 +16,7 @@ rebooted in that gap; those are lost, which errs towards under-counting.
 from __future__ import annotations
 
 import datetime as dt
+import ipaddress
 import json
 import logging
 import os
@@ -32,19 +33,41 @@ def _day(ts: float) -> str:
 
 
 def find_wan(response_body: dict) -> Optional[dict]:
-    """The WAN interface's counters from a getNetworkInterfaces body."""
-    for iface in response_body.get("networkInterfaces") or []:
-        name = iface.get("name", "")
-        if name.startswith("wan") and iface.get("up", True):
-            try:
-                return {
-                    "name": name,
-                    "rx": int((iface.get("rxStats") or {}).get("bytes", 0)),
-                    "tx": int((iface.get("txStats") or {}).get("bytes", 0)),
-                }
-            except (TypeError, ValueError):
-                return None
-    return None
+    """The WAN interface's counters from a getNetworkInterfaces body.
+
+    The standard Starlink router names it ``wan0``. Prenup's Starlink Mini
+    (built-in router) didn't expose a ``wan*`` interface, so fall back to the
+    interface holding an internet-facing IPv4 — Starlink hands out CGNAT
+    addresses (100.64.0.0/10, e.g. Vendetta's 100.103.24.79), which count.
+    """
+    interfaces = [i for i in response_body.get("networkInterfaces") or [] if i.get("up", True)]
+    chosen = next((i for i in interfaces if str(i.get("name", "")).startswith("wan")), None)
+    if chosen is None:
+        chosen = next((i for i in interfaces if _has_internet_ipv4(i)), None)
+    if chosen is None:
+        return None
+    try:
+        return {
+            "name": chosen.get("name", "?"),
+            "rx": int((chosen.get("rxStats") or {}).get("bytes", 0)),
+            "tx": int((chosen.get("txStats") or {}).get("bytes", 0)),
+        }
+    except (TypeError, ValueError):
+        return None
+
+
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
+def _has_internet_ipv4(iface: dict) -> bool:
+    for addr in iface.get("ipv4Addresses") or []:
+        try:
+            ip = ipaddress.ip_interface(addr).ip
+        except ValueError:
+            continue
+        if ip in _CGNAT or ip.is_global:
+            return True
+    return False
 
 
 class UsageLedger:

@@ -234,3 +234,38 @@ def for_heartbeat(state: dict) -> dict:
     if outages:
         out["outages"] = outages
     return {k: v for k, v in out.items() if v is not None}
+
+
+def main(argv=None) -> None:
+    """Entry point for the child process started by supervisor.py."""
+    import argparse
+    import signal
+
+    ap = argparse.ArgumentParser(description="Starlink dish poller (child process)")
+    ap.add_argument("--state-dir", required=True)
+    ap.add_argument("--address", default="192.168.100.1:9200")
+    ap.add_argument("--poll-interval", type=float, default=15)
+    ap.add_argument("--router-address", default="")
+    ap.add_argument("--usage-path", default=None)
+    ap.add_argument("--once", action="store_true", help="poll once and exit (tests)")
+    a = ap.parse_args(argv)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    poller = StarlinkPoller(
+        state_dir=a.state_dir, address=a.address, poll_interval=a.poll_interval,
+        router_address=a.router_address, usage_path=a.usage_path,
+    )
+    if a.once:
+        poller.poll_once()
+        return
+    signal.signal(signal.SIGTERM, lambda *_: poller.stop())
+    logger.info("Starlink poller running as pid %d (dish at %s)", os.getpid(), a.address)
+    poller._run()
+
+
+if __name__ == "__main__":
+    main()

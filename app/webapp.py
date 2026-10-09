@@ -61,20 +61,21 @@ def main() -> None:
             gps_reader.start()
 
         # Start the Starlink dish poller (if a dish is there, we'll find it).
-        # Guarded separately: this container also sends the heartbeat, and a
-        # vessel whose heartbeat stops looks offline to viewers.
+        # It runs as a supervised CHILD PROCESS: this container also sends the
+        # heartbeat, a vessel whose heartbeat stops looks offline to viewers,
+        # and a crash in grpc's native code can't be caught in-process.
         starlink_cfg = config.get("starlink", {})
         if starlink_cfg.get("enabled", True):
             try:
-                from app.starlink.poller import StarlinkPoller
-                StarlinkPoller(
-                    state_dir=manager.get(config, "system", "state_dir", "/run/rpie"),
-                    address=starlink_cfg.get("address", "192.168.100.1:9200"),
-                    poll_interval=starlink_cfg.get("poll_interval", 15),
-                    router_address=starlink_cfg.get("router_address", "192.168.1.1:9000"),
+                from app.starlink.supervisor import PollerSupervisor
+                PollerSupervisor([
+                    "--state-dir", manager.get(config, "system", "state_dir", "/run/rpie"),
+                    "--address", str(starlink_cfg.get("address", "192.168.100.1:9200")),
+                    "--poll-interval", str(starlink_cfg.get("poll_interval", 15)),
+                    "--router-address", str(starlink_cfg.get("router_address", "192.168.1.1:9000")),
                     # SD card, not tmpfs: daily totals must survive reboots
-                    usage_path=str(manager.DATA_DIR / "starlink_usage.json"),
-                ).start()
+                    "--usage-path", str(manager.DATA_DIR / "starlink_usage.json"),
+                ]).start()
             except Exception as e:
                 logging.getLogger(__name__).warning("Starlink poller not started: %s", e)
 

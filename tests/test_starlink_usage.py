@@ -84,3 +84,34 @@ def test_old_days_pruned(tmp_path):
 def test_summary_carries_utc_dates(tmp_path):
     s = UsageLedger(tmp_path / "u.json").summary(T0 + 100)
     assert s["date"] == "2026-09-29" and s["yesterday_date"] == "2026-09-28"
+
+
+def test_mini_style_router_without_wan_name():
+    # No wan* interface: pick the one with the Starlink CGNAT address
+    body = {"networkInterfaces": [
+        {"name": "br-lan", "up": True, "ipv4Addresses": ["192.168.1.1/24"],
+         "rxStats": {"bytes": "900"}, "txStats": {"bytes": "900"}},
+        {"name": "eth1", "up": True, "ipv4Addresses": ["100.79.12.5/10"],
+         "rxStats": {"bytes": "5000"}, "txStats": {"bytes": "3000"}},
+    ]}
+    assert find_wan(body) == {"name": "eth1", "rx": 5000, "tx": 3000}
+
+
+def test_public_ipv4_also_counts():
+    body = {"networkInterfaces": [{"name": "uplink", "up": True, "ipv4Addresses": ["8.8.4.4/32"],
+                                   "rxStats": {"bytes": "1"}, "txStats": {"bytes": "2"}}]}
+    assert find_wan(body)["name"] == "uplink"
+
+
+def test_private_only_is_not_a_wan():
+    body = {"networkInterfaces": [{"name": "lan1", "up": True, "ipv4Addresses": ["192.168.1.1/24", "10.0.0.1/8"]}]}
+    assert find_wan(body) is None
+
+
+def test_down_wan_ignored_and_bad_addresses_tolerated():
+    body = {"networkInterfaces": [
+        {"name": "wan0", "up": False, "rxStats": {"bytes": "1"}, "txStats": {"bytes": "1"}},
+        {"name": "x", "up": True, "ipv4Addresses": ["not-an-ip", "100.64.0.9/10"],
+         "rxStats": {"bytes": "7"}, "txStats": {"bytes": "8"}},
+    ]}
+    assert find_wan(body) == {"name": "x", "rx": 7, "tx": 8}
