@@ -24,7 +24,8 @@ from app.starlink.client import StarlinkClient, StarlinkError
 from app.starlink.summary import payload, summarize
 from app.starlink.usage import UsageLedger, find_wan
 
-logger = logging.getLogger(__name__)
+# Fixed name: run as the child process (`python -m`), __name__ would be "__main__"
+logger = logging.getLogger("app.starlink.poller")
 
 STATE_FILE = "starlink.json"
 
